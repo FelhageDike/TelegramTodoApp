@@ -1,0 +1,21 @@
+# Веб-UI для Docker (Portainer). Не публикуем в интернет — только localhost на VPS.
+#
+# Запуск:
+#   docker compose -f docker-compose.tools.yml up -d
+#
+# В браузере на ПК (туннель SSH, см. docs/PORTAINER.md):
+#   http://localhost:9000
+
+services:
+  portainer:
+    image: portainer/portainer-ce:2.21.5
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+volumes:
+  portainer_data:

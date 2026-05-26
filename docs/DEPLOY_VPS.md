@@ -63,3 +63,7 @@ sudo ufw enable
 ## 5. Обновить MINI_APP_URL в GitHub
 
 **Settings → Secrets → MINI_APP_URL** = `https://ваш.duckdns.org/`
+
+## 6. Docker в браузере (Portainer)
+
+См. [PORTAINER.md](./PORTAINER.md) — веб-UI через SSH-туннель, без открытия порта в интернет.

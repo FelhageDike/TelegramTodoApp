@@ -7,6 +7,8 @@ obj/
 .env
 **/.env
 deploy/.env
+deploy_key
+deploy_key.pub
 *.db
 *.log
 .DS_Store
