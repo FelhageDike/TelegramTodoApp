@@ -66,8 +66,10 @@ sudo ufw enable
 | `src/Gateway/**`, `src/Web/**` | только `bff` |
 | `src/Services/Identity/**` | только `identity` |
 | … Groups / Tasks / Gamification | соответствующий сервис |
-| `src/Shared/**` или `docker/Dockerfile.api` | все API + `bff` + `bot` |
+| `src/Shared/**` или `docker/Dockerfile.api` | все API + `bff` + `bot` **по очереди** |
 | `deploy/Caddyfile` | только `caddy` |
+
+Сборка **строго по одному сервису**: identity → groups → tasks → gamification → bff → bot → caddy. Следующий стартует после health предыдущего API.
 
 **Не трогает:** `postgres`, `rabbitmq`, Portainer, volumes.
 
