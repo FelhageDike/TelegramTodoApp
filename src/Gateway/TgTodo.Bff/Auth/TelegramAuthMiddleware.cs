@@ -1,3 +1,4 @@
+using System.Text;
 using TgTodo.Bff.Clients;
 
 namespace TgTodo.Bff.Auth;
@@ -50,7 +51,9 @@ public class TelegramAuthMiddleware
             if (!string.IsNullOrEmpty(expectedKey) && botKey == expectedKey)
             {
                 context.Request.Headers.TryGetValue("X-Telegram-Display-Name", out var tgDisplayHeader);
-                var name = tgDisplayHeader.Count > 0 ? tgDisplayHeader.ToString() : "User";
+                var name = tgDisplayHeader.Count > 0
+                    ? DecodeBotDisplayName(tgDisplayHeader.ToString())
+                    : "User";
                 telegramUser = new TelegramUser(botTelegramId, name, null, null);
             }
         }
@@ -85,6 +88,21 @@ public class TelegramAuthMiddleware
         };
 
         await _next(context);
+    }
+
+    private static string DecodeBotDisplayName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "User";
+
+        try
+        {
+            return Encoding.UTF8.GetString(Convert.FromBase64String(value));
+        }
+        catch (FormatException)
+        {
+            return value;
+        }
     }
 
     private static bool IsPublicPath(PathString path) =>

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using TgTodo.Bot;
@@ -89,9 +90,13 @@ public sealed class BffClient
         var request = new HttpRequestMessage(method, url) { Content = content };
         request.Headers.TryAddWithoutValidation("X-TgTodo-Bot-Key", _options.InternalKey);
         request.Headers.TryAddWithoutValidation("X-Telegram-User-Id", telegramId.ToString());
-        request.Headers.TryAddWithoutValidation("X-Telegram-Display-Name", displayName);
+        request.Headers.TryAddWithoutValidation("X-Telegram-Display-Name", EncodeDisplayName(displayName));
         return _http.SendAsync(request, ct);
     }
+
+    /// <summary>HTTP headers allow ASCII only; Telegram names may contain Cyrillic.</summary>
+    private static string EncodeDisplayName(string displayName) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(displayName));
 
     private static async Task<(T? Value, string? Error)> ReadResultAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
