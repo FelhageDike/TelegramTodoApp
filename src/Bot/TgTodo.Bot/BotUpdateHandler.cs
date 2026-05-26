@@ -567,15 +567,7 @@ public sealed class BotUpdateHandler
         _chatPeers.Remember(chatInstance, draftId, user.Id);
         _chatPeers.Remember(chatInstance, draftId, draft.TelegramUserId);
 
-        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
-        var peerId = user.Id != draft.TelegramUserId
-            ? user.Id
-            : _chatPeers.TryGetSingleOtherPeer(chatInstance, draftId, draft.TelegramUserId);
-
-        IReadOnlyList<GroupDto> shared = [];
-        if (peerId is not null)
-            shared = await GetSharedGroupsAsync(
-                draft.TelegramUserId, authorName, peerId.Value, GetDisplayName(user), ct);
+        var shared = await GetSharedGroupsForDraftAsync(draft, user, chatInstance, ct);
 
         var markup = shared.Count > 0
             ? BuildInlineAfterOpenKeyboard(draftId, personalAndGroup: true)
@@ -662,9 +654,11 @@ public sealed class BotUpdateHandler
             return;
         }
 
-        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
         var clickerName = GetDisplayName(user);
         var today = await TodayForUserAsync(user, ct);
+        var chatInstance = callback.ChatInstance ?? draft.ChatInstance;
+        _chatPeers.Remember(chatInstance, draftId, user.Id);
+        _chatPeers.Remember(chatInstance, draftId, draft.TelegramUserId);
 
         if (mode == "p")
         {
@@ -683,11 +677,11 @@ public sealed class BotUpdateHandler
             return;
         }
 
-        var shared = await GetSharedGroupsAsync(draft.TelegramUserId, authorName, user.Id, clickerName, ct);
+        var shared = await GetSharedGroupsForDraftAsync(draft, user, chatInstance, ct);
         if (shared.Count == 0)
         {
             await bot.AnswerCallbackQuery(callback.Id,
-                "Нет общей группы TgTodo. Создайте группу в приложении и пригласите собеседника.",
+                "Нет общей группы с собеседником в этом чате. Пусть второй участник сначала нажмёт «Добавить задачу», затем повторите.",
                 showAlert: true, cancellationToken: ct);
             return;
         }
@@ -747,6 +741,35 @@ public sealed class BotUpdateHandler
             .ToList();
         rows.Add(new[] { InlineKeyboardButton.WithCallbackData("⭕ Отмена", $"tno:{draftId}") });
         return new InlineKeyboardMarkup(rows);
+    }
+
+    /// <summary>
+    /// Второй участник для пересечения групп: нажавший, если это не автор inline; иначе единственный другой id в этом чате (после tstart).
+    /// </summary>
+    private (long? OtherTelegramId, string OtherDisplayName) ResolveOtherTelegramUserForSharedGroups(
+        InlineTaskDraftDto draft,
+        User clicker,
+        string? chatInstance)
+    {
+        if (clicker.Id != draft.TelegramUserId)
+            return (clicker.Id, GetDisplayName(clicker));
+
+        var peer = _chatPeers.TryGetSingleOtherPeer(chatInstance, draft.Id, draft.TelegramUserId);
+        return peer is null ? (null, "") : (peer.Value, "User");
+    }
+
+    private async Task<List<GroupDto>> GetSharedGroupsForDraftAsync(
+        InlineTaskDraftDto draft,
+        User clicker,
+        string? chatInstance,
+        CancellationToken ct)
+    {
+        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
+        var (otherId, otherName) = ResolveOtherTelegramUserForSharedGroups(draft, clicker, chatInstance);
+        if (otherId is null)
+            return [];
+
+        return await GetSharedGroupsAsync(draft.TelegramUserId, authorName, otherId.Value, otherName, ct);
     }
 
     private async Task<List<GroupDto>> GetSharedGroupsAsync(
