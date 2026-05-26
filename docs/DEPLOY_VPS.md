@@ -27,11 +27,24 @@ nano .env
 | `POSTGRES_PASSWORD` | сильный пароль |
 | `RABBITMQ_PASSWORD` | сильный пароль |
 
-Первый запуск:
+Первый запуск (по одному сервису, после очистки):
 
 ```bash
 cd ~/TelegramTodoApp/deploy
-docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d --build
+chmod +x scripts/rebuild-sequential.sh
+./scripts/rebuild-sequential.sh
+```
+
+Только бот после правок:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d --build bot
+```
+
+Полная очистка **с удалением БД** (осторожно):
+
+```bash
+./scripts/rebuild-sequential.sh --wipe-volumes
 ```
 
 Проверка (через 2–5 мин):
