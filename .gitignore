@@ -9,6 +9,8 @@ obj/
 deploy/.env
 deploy_key
 deploy_key.pub
+github_deploy_key
+github_deploy_key.pub
 *.db
 *.log
 .DS_Store
