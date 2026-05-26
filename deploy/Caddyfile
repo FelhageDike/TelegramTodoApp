@@ -1,4 +1,4 @@
-# Замените на ваш DuckDNS, например tgtodo.duckdns.org
+# DOMAIN из deploy/.env, например tgtodo.ru
 {$DOMAIN} {
 	encode gzip
 	reverse_proxy bff:8080

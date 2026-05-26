@@ -20,8 +20,8 @@ nano .env
 
 | Переменная | Пример |
 |------------|--------|
-| `DOMAIN` | `tgtodo.duckdns.org` (ваш DuckDNS) |
-| `MINI_APP_URL` | `https://tgtodo.duckdns.org/` |
+| `DOMAIN` | `tgtodo.ru` |
+| `MINI_APP_URL` | `https://tgtodo.ru/` |
 | `BOT_TOKEN` | от BotFather |
 | `BOT_INTERNAL_KEY` | как в GitHub Secret |
 | `POSTGRES_PASSWORD` | сильный пароль |
@@ -39,7 +39,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env 
 Проверка (через 2–5 мин):
 
 ```bash
-curl -s https://tgtodo.duckdns.org/health
+curl -s https://tgtodo.ru/health
 ```
 
 ## 2. Фаервол
@@ -53,7 +53,7 @@ sudo ufw enable
 
 ## 3. BotFather
 
-- Mini App URL: `https://ВАШ.duckdns.org/`
+- Mini App URL: `https://tgtodo.ru/`
 - Menu Button → тот же URL
 
 ## 4. GitHub
@@ -64,7 +64,7 @@ sudo ufw enable
 
 ## 5. Обновить MINI_APP_URL в GitHub
 
-**Settings → Secrets → MINI_APP_URL** = `https://ваш.duckdns.org/`
+**Settings → Secrets → MINI_APP_URL** = `https://tgtodo.ru/`
 
 ## 6. Docker в браузере (Portainer)
 
