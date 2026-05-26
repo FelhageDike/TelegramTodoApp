@@ -1,5 +1,6 @@
 using TgTodo.Bff.Auth;
 using TgTodo.Bff.Clients;
+using TgTodo.Contracts;
 
 namespace TgTodo.Bff.Endpoints;
 
@@ -8,6 +9,23 @@ public static class BffEndpoints
     public static void MapBffEndpoints(this WebApplication app)
     {
         var bff = app.MapGroup("/bff");
+
+        bff.MapGet("/me", (HttpContext ctx) =>
+        {
+            var user = ctx.GetUserContext();
+            return Results.Ok(new UserProfileDto(user.UserId, user.DisplayName, user.Timezone));
+        });
+
+        bff.MapPatch("/profile/timezone", async (HttpContext ctx, UpdateTimezoneBody body, IdentityApiClient identity) =>
+        {
+            if (!TimeZoneCalendar.IsValidTimeZoneId(body.Timezone))
+                return Results.BadRequest(new { error = "Некорректный часовой пояс (ожидается IANA, например Europe/Samara)." });
+
+            var user = ctx.GetUserContext();
+            var updated = await identity.UpdateTimezoneAsync(user.UserId, body.Timezone.Trim());
+            user.Timezone = updated.Timezone;
+            return Results.Ok(new UserProfileDto(updated.Id, updated.DisplayName, updated.Timezone));
+        });
 
         bff.MapGet("/home", async (
             HttpContext ctx,
@@ -19,7 +37,7 @@ public static class BffEndpoints
             IdentityApiClient identity) =>
         {
             var user = ctx.GetUserContext();
-            var day = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+            var day = date ?? TimeZoneCalendar.Today(user.Timezone);
             var groupList = await groups.GetGroupsAsync(user.UserId);
             var balance = await gamification.GetBalanceAsync(user.UserId, groupId);
             var taskList = await tasks.GetTasksAsync(user.UserId, groupId, day);
@@ -172,6 +190,8 @@ public static class BffEndpoints
             m.JoinedAt)).ToList();
     }
 
+    private record UserProfileDto(Guid UserId, string DisplayName, string Timezone);
+    private record UpdateTimezoneBody(string Timezone);
     private record CreateGroupBody(string Name);
     private record JoinGroupBody(string InviteCode);
     private record CreateTaskBody(

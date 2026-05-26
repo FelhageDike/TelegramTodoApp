@@ -7,6 +7,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InlineQueryResults;
 using Telegram.Bot.Types.ReplyMarkups;
 using TgTodo.Bot.Services;
+using TgTodo.Contracts;
 using TgTodo.Contracts.Bot;
 using TgTodo.Contracts.Enums;
 
@@ -179,45 +180,10 @@ public sealed class BotUpdateHandler
 
         var data = callback.Data;
         var user = callback.From;
-        var chatId = callback.Message?.Chat.Id;
-        var messageId = callback.Message?.MessageId;
 
         if (data.StartsWith("tadd:", StringComparison.Ordinal))
         {
-            var draftId = data["tadd:".Length..];
-            var draft = await _bff.GetInlineDraftAsync(draftId, ct);
-            if (draft is null)
-            {
-                await bot.AnswerCallbackQuery(callback.Id,
-                    "Черновик не найден или истёк. Снова введите @бот и текст задачи.",
-                    showAlert: true, cancellationToken: ct);
-                return;
-            }
-
-            if (draft.TelegramUserId != user.Id)
-            {
-                await bot.AnswerCallbackQuery(callback.Id,
-                    "Добавить может только тот, кто создал эту карточку.",
-                    showAlert: true, cancellationToken: ct);
-                return;
-            }
-
-            var body = _bff.BuildCreateTaskBody(draft.Title, draft.Points, draft.GroupId, draft.StartDate);
-            var (task, error) = await _bff.CreateTaskAsync(user.Id, GetDisplayName(user), body, ct);
-            if (task is null)
-            {
-                await bot.AnswerCallbackQuery(callback.Id, error ?? "Ошибка", showAlert: true, cancellationToken: ct);
-                return;
-            }
-
-            await _bff.DeleteInlineDraftAsync(draftId, ct);
-            await bot.AnswerCallbackQuery(callback.Id, "Добавлено", cancellationToken: ct);
-            if (chatId.HasValue && messageId.HasValue)
-            {
-                await bot.EditMessageText(chatId.Value, messageId.Value,
-                    $"✅ Задача добавлена: {draft.Title} (+{draft.Points})",
-                    cancellationToken: ct);
-            }
+            await HandleInlineAddCallbackAsync(bot, callback, user, data, ct);
             return;
         }
 
@@ -226,10 +192,7 @@ public sealed class BotUpdateHandler
             var draftId = data["tno:".Length..];
             await _bff.DeleteInlineDraftAsync(draftId, ct);
             await bot.AnswerCallbackQuery(callback.Id, cancellationToken: ct);
-            if (chatId.HasValue && messageId.HasValue)
-            {
-                await bot.EditMessageText(chatId.Value, messageId.Value, "Задача отклонена", cancellationToken: ct);
-            }
+            await BotCallbackMessages.TryEditTextAsync(bot, callback, "Задача отклонена", _logger, cancellationToken: ct);
             return;
         }
 
@@ -241,7 +204,7 @@ public sealed class BotUpdateHandler
                 return;
             }
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var today = await TodayForUserAsync(user, ct);
             var (task, error) = await _bff.CompleteTaskAsync(user.Id, GetDisplayName(user), taskId, today, ct);
             if (task is null)
             {
@@ -251,8 +214,8 @@ public sealed class BotUpdateHandler
 
             await bot.AnswerCallbackQuery(callback.Id, "Выполнено", cancellationToken: ct);
             var session = _sessions.GetOrCreate(user.Id);
-            if (chatId.HasValue)
-                await SendTodayAsync(bot, chatId.Value, user, session, ct);
+            if (callback.Message?.Chat.Id is { } doneChatId)
+                await SendTodayAsync(bot, doneChatId, user, session, ct);
             return;
         }
 
@@ -271,8 +234,8 @@ public sealed class BotUpdateHandler
                 await bot.AnswerCallbackQuery(callback.Id, g is null ? "Группа" : g.Name, cancellationToken: ct);
             }
 
-            if (chatId.HasValue)
-                await SendGroupsAsync(bot, chatId.Value, user, _sessions.GetOrCreate(user.Id), ct);
+            if (callback.Message?.Chat.Id is { } ctxChatId)
+                await SendGroupsAsync(bot, ctxChatId, user, _sessions.GetOrCreate(user.Id), ct);
         }
     }
 
@@ -299,13 +262,14 @@ public sealed class BotUpdateHandler
         var session = _sessions.GetOrCreate(user.Id);
         var (groupId, groupName, scopeLabel) = await ResolveScopeAsync(user, session, parsed.GroupTag, ct);
         var scope = groupId.HasValue ? TaskScope.Group : TaskScope.Personal;
-        var startDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        var startDate = await TodayForUserAsync(user, ct);
         var draftId = Guid.NewGuid().ToString("N")[..12];
 
         var draftDto = new InlineTaskDraftDto
         {
             Id = draftId,
             TelegramUserId = user.Id,
+            AuthorDisplayName = GetDisplayName(user),
             Title = parsed.Title,
             Points = parsed.Points,
             GroupId = groupId,
@@ -340,11 +304,7 @@ public sealed class BotUpdateHandler
             new InputTextMessageContent(messageText) { ParseMode = ParseMode.Markdown })
         {
             Description = $"{scopeLabel} · +{parsed.Points} баллов",
-            ReplyMarkup = new InlineKeyboardMarkup(new[]
-            {
-                new[] { InlineKeyboardButton.WithCallbackData("🙋 Добавить себе", $"tadd:{draftId}") },
-                new[] { InlineKeyboardButton.WithCallbackData("⭕ Отклонить", $"tno:{draftId}") }
-            })
+            ReplyMarkup = BuildInlineDraftKeyboard(draftId, groupId.HasValue)
         };
 
         await bot.AnswerInlineQuery(inline.Id, new[] { result }, cacheTime: 0, isPersonal: true, cancellationToken: ct);
@@ -366,7 +326,7 @@ public sealed class BotUpdateHandler
         }
 
         var (groupId, _, _) = await ResolveScopeAsync(user, session, parsed.GroupTag, ct);
-        var body = _bff.BuildCreateTaskBody(parsed.Title, parsed.Points, groupId, DateOnly.FromDateTime(DateTime.UtcNow));
+        var body = _bff.BuildCreateTaskBody(parsed.Title, parsed.Points, groupId, await TodayForUserAsync(user, ct));
         var (task, error) = await _bff.CreateTaskAsync(user.Id, GetDisplayName(user), body, ct);
         await bot.SendMessage(chatId,
             task is null ? error ?? "Ошибка" : $"✅ Задача создана: {task.Title} (+{task.PointsReward})",
@@ -378,7 +338,7 @@ public sealed class BotUpdateHandler
         await bot.SendMessage(chatId,
             "TgTodo — задачи и баллы для себя и семьи.\n\n" +
             "• Mini App — полный интерфейс\n" +
-            "• В любом чате: `@бот название +10` — карточка с кнопками\n" +
+            "• В любом чате: `@бот название +10` — личная или в общей группе\n" +
             "• /today — задачи на сегодня\n" +
             "• Ссылка-приглашение в группу (из /groups) — вступление без команды /join\n\n" +
             "/help — все команды",
@@ -441,7 +401,7 @@ public sealed class BotUpdateHandler
 
     private async Task SendTodayAsync(ITelegramBotClient bot, long chatId, User user, UserSession session, CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = await TodayForUserAsync(user, ct);
         var home = await _bff.GetHomeAsync(user.Id, GetDisplayName(user), session.SelectedGroupId, today, ct);
         if (home is null)
         {
@@ -569,6 +529,176 @@ public sealed class BotUpdateHandler
             cancellationToken: ct);
     }
 
+    private async Task HandleInlineAddCallbackAsync(
+        ITelegramBotClient bot,
+        CallbackQuery callback,
+        User user,
+        string data,
+        CancellationToken ct)
+    {
+        // tadd:p:{id} — личная; tadd:g:{id} — в общей группе; tadd:g:{id}:{groupId} — выбранная группа;
+        // tadd:{id} — совместимость: личная
+        var payload = data["tadd:".Length..];
+        var parts = payload.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+        {
+            await bot.AnswerCallbackQuery(callback.Id, "Ошибка", showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        var mode = parts[0];
+        string draftId;
+        Guid? pickGroupId = null;
+
+        if (mode is "p" or "g")
+        {
+            if (parts.Length < 2)
+            {
+                await bot.AnswerCallbackQuery(callback.Id, "Ошибка", showAlert: true, cancellationToken: ct);
+                return;
+            }
+
+            draftId = parts[1];
+            if (mode == "g" && parts.Length >= 3 && Guid.TryParse(parts[2], out var gid))
+                pickGroupId = gid;
+        }
+        else
+        {
+            mode = "p";
+            draftId = parts[0];
+        }
+
+        var draft = await _bff.GetInlineDraftAsync(draftId, ct);
+        if (draft is null)
+        {
+            await bot.AnswerCallbackQuery(callback.Id,
+                "Черновик не найден или истёк. Снова введите @бот и текст задачи.",
+                showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        var clickerName = GetDisplayName(user);
+        var today = await TodayForUserAsync(user, ct);
+
+        if (mode == "p")
+        {
+            var body = _bff.BuildCreateTaskBody(draft.Title, draft.Points, null, today);
+            var (task, error) = await _bff.CreateTaskAsync(user.Id, clickerName, body, ct);
+            if (task is null)
+            {
+                await bot.AnswerCallbackQuery(callback.Id, error ?? "Ошибка", showAlert: true, cancellationToken: ct);
+                return;
+            }
+
+            await _bff.DeleteInlineDraftAsync(draftId, ct);
+            await bot.AnswerCallbackQuery(callback.Id, "Добавлено", cancellationToken: ct);
+            await BotCallbackMessages.TryEditTextAsync(
+                bot, callback, $"✅ Личная задача: {draft.Title} (+{draft.Points})", _logger, cancellationToken: ct);
+            return;
+        }
+
+        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
+        var shared = await GetSharedGroupsAsync(draft.TelegramUserId, authorName, user.Id, clickerName, ct);
+        if (shared.Count == 0)
+        {
+            await bot.AnswerCallbackQuery(callback.Id,
+                "Нет общей группы TgTodo. Создайте группу в приложении и пригласите собеседника.",
+                showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        if (!pickGroupId.HasValue)
+        {
+            if (draft.GroupId is { } hinted && shared.Any(g => g.Id == hinted))
+                pickGroupId = hinted;
+            else if (shared.Count == 1)
+                pickGroupId = shared[0].Id;
+        }
+
+        if (!pickGroupId.HasValue)
+        {
+            await bot.AnswerCallbackQuery(callback.Id, "Выберите группу", cancellationToken: ct);
+            var pickerText = $"📋 {draft.Title}\nВыберите группу:";
+            await BotCallbackMessages.TryEditTextAsync(
+                bot, callback, pickerText, _logger, BuildGroupPickerKeyboard(draftId, shared), cancellationToken: ct);
+            return;
+        }
+
+        var group = shared.FirstOrDefault(g => g.Id == pickGroupId);
+        if (group is null)
+        {
+            await bot.AnswerCallbackQuery(callback.Id, "Вы не в этой группе", showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        var userId = await _bff.GetUserIdAsync(user.Id, clickerName, ct);
+        if (userId is null)
+        {
+            await bot.AnswerCallbackQuery(callback.Id, "Не удалось определить профиль", showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        var groupBody = _bff.BuildCreateTaskBody(draft.Title, draft.Points, group.Id, today, userId);
+        var (groupTask, groupError) = await _bff.CreateTaskAsync(user.Id, clickerName, groupBody, ct);
+        if (groupTask is null)
+        {
+            await bot.AnswerCallbackQuery(callback.Id, groupError ?? "Ошибка", showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        await _bff.DeleteInlineDraftAsync(draftId, ct);
+        await bot.AnswerCallbackQuery(callback.Id, "Назначено", cancellationToken: ct);
+        await BotCallbackMessages.TryEditTextAsync(
+            bot, callback,
+            $"✅ В группе «{group.Name}» на вас: {draft.Title} (+{draft.Points})",
+            _logger, cancellationToken: ct);
+    }
+
+    private static InlineKeyboardMarkup BuildInlineDraftKeyboard(string draftId, bool authorHasGroupHint) =>
+        new(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("🙋 Личная", $"tadd:p:{draftId}"),
+                InlineKeyboardButton.WithCallbackData(
+                    authorHasGroupHint ? "👥 В группе" : "👥 Общая группа",
+                    $"tadd:g:{draftId}")
+            },
+            new[] { InlineKeyboardButton.WithCallbackData("⭕ Отклонить", $"tno:{draftId}") }
+        });
+
+    private static InlineKeyboardMarkup BuildGroupPickerKeyboard(string draftId, IReadOnlyList<GroupDto> groups)
+    {
+        var rows = groups
+            .Take(6)
+            .Select(g => new[] { InlineKeyboardButton.WithCallbackData(g.Name, $"tadd:g:{draftId}:{g.Id}") })
+            .ToList();
+        rows.Add(new[] { InlineKeyboardButton.WithCallbackData("⭕ Отмена", $"tno:{draftId}") });
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    private async Task<List<GroupDto>> GetSharedGroupsAsync(
+        long authorTelegramId,
+        string authorDisplayName,
+        long clickerTelegramId,
+        string clickerDisplayName,
+        CancellationToken ct)
+    {
+        var authorGroups = await _bff.GetGroupsAsync(authorTelegramId, authorDisplayName, ct) ?? [];
+        if (authorTelegramId == clickerTelegramId)
+            return authorGroups;
+
+        var clickerGroups = await _bff.GetGroupsAsync(clickerTelegramId, clickerDisplayName, ct) ?? [];
+        var clickerIds = clickerGroups.Select(g => g.Id).ToHashSet();
+        return authorGroups.Where(g => clickerIds.Contains(g.Id)).ToList();
+    }
+
+    private async Task<DateOnly> TodayForUserAsync(User user, CancellationToken ct)
+    {
+        var tz = await _bff.GetUserTimezoneAsync(user.Id, GetDisplayName(user), ct);
+        return TimeZoneCalendar.Today(tz);
+    }
+
     private async Task<(Guid? GroupId, string? GroupName, string ScopeLabel)> ResolveScopeAsync(
         User user,
         UserSession session,
@@ -631,6 +761,6 @@ public sealed class BotUpdateHandler
 
         *Inline в любом чате:*
         `@бот купить молоко +10 #группа`
-        → карточка «Добавить себе» / «Отклонить»
+        → «Личная» / «Общая группа» (если есть общая группа TgTodo) / «Отклонить»
         """;
 }

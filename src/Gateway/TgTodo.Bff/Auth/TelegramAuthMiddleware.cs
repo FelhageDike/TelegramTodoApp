@@ -1,5 +1,6 @@
 using System.Text;
 using TgTodo.Bff.Clients;
+using TgTodo.Contracts;
 
 namespace TgTodo.Bff.Auth;
 
@@ -93,19 +94,31 @@ public class TelegramAuthMiddleware
         var displayName = string.Join(' ', new[] { telegramUser.FirstName, telegramUser.LastName }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
 
+        var clientTimezone = ResolveClientTimezone(context);
+
         var user = await identityClient.EnsureUserAsync(
             telegramUser.Id,
             string.IsNullOrWhiteSpace(displayName) ? telegramUser.Username ?? "User" : displayName,
-            "UTC");
+            clientTimezone);
 
         context.Items["UserContext"] = new UserContext
         {
             UserId = user.Id,
             TelegramId = user.TelegramId,
-            DisplayName = user.DisplayName
+            DisplayName = user.DisplayName,
+            Timezone = user.Timezone
         };
 
         await _next(context);
+    }
+
+    private static string ResolveClientTimezone(HttpContext context)
+    {
+        if (!context.Request.Headers.TryGetValue("X-Client-Timezone", out var header))
+            return "";
+
+        var value = header.ToString().Trim();
+        return TimeZoneCalendar.IsValidTimeZoneId(value) ? value : "";
     }
 
     private static string DecodeBotDisplayName(string value)

@@ -7,6 +7,7 @@ public sealed class InlineTaskDraftDto
 {
     public string Id { get; set; } = "";
     public long TelegramUserId { get; set; }
+    public string AuthorDisplayName { get; set; } = "";
     public string Title { get; set; } = "";
     public int Points { get; set; }
     public Guid? GroupId { get; set; }

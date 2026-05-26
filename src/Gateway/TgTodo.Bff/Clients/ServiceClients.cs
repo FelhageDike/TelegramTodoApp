@@ -27,6 +27,28 @@ public class IdentityApiClient
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<List<IdentityUserDto>>())!;
     }
+
+    public async Task<IdentityUserDto?> GetUserAsync(Guid userId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "api/users/me");
+        request.Headers.Add("X-User-Id", userId.ToString());
+        var response = await _http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        return await response.Content.ReadFromJsonAsync<IdentityUserDto>();
+    }
+
+    public async Task<IdentityUserDto> UpdateTimezoneAsync(Guid userId, string timezone)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, "api/users/me/timezone")
+        {
+            Content = JsonContent.Create(new { Timezone = timezone })
+        };
+        request.Headers.Add("X-User-Id", userId.ToString());
+        var response = await _http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<IdentityUserDto>())!;
+    }
 }
 
 public record GroupDto(Guid Id, string Name, string InviteCode, GroupRole MyRole);

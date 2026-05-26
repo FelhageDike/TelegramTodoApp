@@ -8,6 +8,7 @@ namespace TgTodo.MiniApp.Services;
 public class UserTimeService
 {
     private readonly IJSRuntime _js;
+    private readonly ClientTimezoneState _clientTimezone;
     private bool _initialized;
 
     public string? TimeZoneId { get; private set; }
@@ -41,7 +42,11 @@ public class UserTimeService
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
-    public UserTimeService(IJSRuntime js) => _js = js;
+    public UserTimeService(IJSRuntime js, ClientTimezoneState clientTimezone)
+    {
+        _js = js;
+        _clientTimezone = clientTimezone;
+    }
 
     public async Task InitializeAsync()
     {
@@ -49,6 +54,7 @@ public class UserTimeService
         _initialized = true;
         var settings = await LoadSettingsAsync();
         TimeZoneId = string.IsNullOrWhiteSpace(settings.TimeZoneId) ? null : settings.TimeZoneId;
+        await RefreshClientTimezoneHeaderAsync();
     }
 
     public async Task SetTimeZoneAsync(string? timeZoneId)
@@ -57,7 +63,23 @@ public class UserTimeService
         var settings = await LoadSettingsAsync();
         settings.TimeZoneId = TimeZoneId;
         await SaveSettingsAsync(settings);
+        await RefreshClientTimezoneHeaderAsync();
         OnChanged?.Invoke();
+    }
+
+    public async Task<string> GetEffectiveTimeZoneIdAsync()
+    {
+        await EnsureInitializedAsync();
+        if (!string.IsNullOrWhiteSpace(TimeZoneId))
+            return TimeZoneId;
+        try
+        {
+            return await _js.InvokeAsync<string>("tgTodoTime.getDeviceTimeZone");
+        }
+        catch
+        {
+            return "UTC";
+        }
     }
 
     public async Task<DateOnly> GetTodayAsync()
@@ -117,5 +139,10 @@ public class UserTimeService
     {
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         await _js.InvokeVoidAsync("tgTodoSettings.saveJson", json);
+    }
+
+    private async Task RefreshClientTimezoneHeaderAsync()
+    {
+        _clientTimezone.Current = await GetEffectiveTimeZoneIdAsync();
     }
 }

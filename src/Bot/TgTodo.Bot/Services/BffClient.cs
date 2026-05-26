@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using TgTodo.Bot;
+using TgTodo.Contracts;
 using TgTodo.Contracts.Bot;
 using TgTodo.Contracts.Enums;
 
@@ -75,6 +76,46 @@ public sealed class BffClient
         var response = await SendAsync(telegramId, displayName, HttpMethod.Post, "bff/tasks",
             JsonContent.Create(body), ct);
         return await ReadResultAsync<TaskDto>(response, ct);
+    }
+
+    public async Task<Guid?> GetUserIdAsync(long telegramId, string displayName, CancellationToken ct)
+    {
+        var response = await SendAsync(telegramId, displayName, HttpMethod.Get, "bff/me", ct);
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        try
+        {
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+            if (json.TryGetProperty("userId", out var id) && id.TryGetGuid(out var guid))
+                return guid;
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return null;
+    }
+
+    public async Task<string> GetUserTimezoneAsync(long telegramId, string displayName, CancellationToken ct)
+    {
+        var response = await SendAsync(telegramId, displayName, HttpMethod.Get, "bff/me", ct);
+        if (!response.IsSuccessStatusCode)
+            return "UTC";
+
+        try
+        {
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+            if (json.TryGetProperty("timezone", out var tz) && tz.GetString() is { } id && !string.IsNullOrWhiteSpace(id))
+                return TimeZoneCalendar.NormalizeTimeZoneId(id);
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return "UTC";
     }
 
     public async Task<(TaskDto? Task, string? Error)> CompleteTaskAsync(long telegramId, string displayName, Guid taskId, DateOnly? date, CancellationToken ct)
@@ -156,7 +197,12 @@ public sealed class BffClient
         return (default, message);
     }
 
-    public object BuildCreateTaskBody(string title, int points, Guid? groupId, DateOnly startDate) => new
+    public object BuildCreateTaskBody(
+        string title,
+        int points,
+        Guid? groupId,
+        DateOnly startDate,
+        Guid? assignedToUserId = null) => new
     {
         scope = groupId.HasValue ? TaskScope.Group : TaskScope.Personal,
         title,
@@ -168,7 +214,7 @@ public sealed class BffClient
         personalVisibility = PersonalTaskVisibility.Private,
         completionMode = CompletionMode.AnyMember,
         groupId,
-        assignedToUserId = (Guid?)null,
+        assignedToUserId,
         categoryId = (Guid?)null,
         visibilityGroupId = (Guid?)null,
         startDate = startDate.ToString("yyyy-MM-dd")

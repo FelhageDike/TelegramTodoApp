@@ -23,7 +23,15 @@ public class User : AuditableEntity
     public void Update(string displayName, string timezone)
     {
         DisplayName = displayName;
-        Timezone = string.IsNullOrWhiteSpace(timezone) ? Timezone : timezone;
+        if (!string.IsNullOrWhiteSpace(timezone))
+            Timezone = timezone;
+        MarkUpdated();
+    }
+
+    public void SetTimezone(string timezone)
+    {
+        if (!string.IsNullOrWhiteSpace(timezone))
+            Timezone = timezone;
         MarkUpdated();
     }
 }

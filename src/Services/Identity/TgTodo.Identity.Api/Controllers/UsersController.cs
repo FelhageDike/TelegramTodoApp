@@ -21,7 +21,19 @@ public class UsersController : ControllerBase
         var user = await _mediator.Send(new GetUserQuery(userId), ct);
         return Ok(user);
     }
+
+    [HttpPatch("me/timezone")]
+    public async Task<ActionResult<UserDto>> UpdateTimezone([FromBody] UpdateTimezoneRequest body, CancellationToken ct)
+    {
+        if (!Guid.TryParse(Request.Headers["X-User-Id"], out var userId))
+            return Unauthorized();
+
+        var user = await _mediator.Send(new UpdateUserTimezoneCommand(userId, body.Timezone), ct);
+        return Ok(user);
+    }
 }
+
+public record UpdateTimezoneRequest(string Timezone);
 
 [ApiController]
 [Route("internal/users")]
