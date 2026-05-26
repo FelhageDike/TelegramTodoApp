@@ -20,8 +20,9 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    await app.Services.MigrateTasksDatabaseAsync();
 }
+
+await app.Services.MigrateTasksDatabaseAsync();
 
 app.UseMiddleware<ExceptionMiddleware>();
 app.MapControllers();

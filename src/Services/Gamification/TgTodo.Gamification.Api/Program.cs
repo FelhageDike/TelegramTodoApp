@@ -20,8 +20,9 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    await app.Services.MigrateGamificationDatabaseAsync();
 }
+
+await app.Services.MigrateGamificationDatabaseAsync();
 
 app.UseMiddleware<ExceptionMiddleware>();
 app.MapControllers();
