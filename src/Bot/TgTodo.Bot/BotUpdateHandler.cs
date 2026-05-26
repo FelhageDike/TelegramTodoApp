@@ -21,7 +21,6 @@ public sealed class BotUpdateHandler
     private readonly BffClient _bff;
     private readonly UserSessionStore _sessions;
     private readonly InlineChatPeerStore _chatPeers;
-    private readonly InlineDraftKeyboardStore _draftKeyboards;
     private readonly ILogger<BotUpdateHandler> _logger;
     private readonly object _botUsernameLock = new();
     private string? _cachedBotUsername;
@@ -31,14 +30,12 @@ public sealed class BotUpdateHandler
         BffClient bff,
         UserSessionStore sessions,
         InlineChatPeerStore chatPeers,
-        InlineDraftKeyboardStore draftKeyboards,
         ILogger<BotUpdateHandler> logger)
     {
         _options = options.Value;
         _bff = bff;
         _sessions = sessions;
         _chatPeers = chatPeers;
-        _draftKeyboards = draftKeyboards;
         _logger = logger;
     }
 
@@ -187,6 +184,12 @@ public sealed class BotUpdateHandler
         var data = callback.Data;
         var user = callback.From;
 
+        if (data.StartsWith("tstart:", StringComparison.Ordinal))
+        {
+            await HandleInlineOpenCallbackAsync(bot, callback, user, data, ct);
+            return;
+        }
+
         if (data.StartsWith("tadd:", StringComparison.Ordinal))
         {
             await HandleInlineAddCallbackAsync(bot, callback, user, data, ct);
@@ -197,7 +200,6 @@ public sealed class BotUpdateHandler
         {
             var draftId = data["tno:".Length..];
             await _bff.DeleteInlineDraftAsync(draftId, ct);
-            _draftKeyboards.Forget(draftId);
             await bot.AnswerCallbackQuery(callback.Id, cancellationToken: ct);
             await BotCallbackMessages.TryEditTextAsync(bot, callback, "Задача отклонена", _logger, cancellationToken: ct);
             return;
@@ -306,17 +308,14 @@ public sealed class BotUpdateHandler
             return;
         }
 
-        // Кнопку «В группе» показываем только после callback, когда известен chat_instance и собеседник.
-        var showGroupButton = false;
-
         var messageText = $"📋 *Задача:* {EscapeMarkdown(parsed.Title)}";
         var result = new InlineQueryResultArticle(
             draftId,
             $"Задача: {parsed.Title}",
             new InputTextMessageContent(messageText) { ParseMode = ParseMode.Markdown })
         {
-            Description = $"{scopeLabel} · +{parsed.Points} баллов",
-            ReplyMarkup = BuildInlineDraftKeyboard(draftId, showGroupButton)
+            Description = $"{scopeLabel} · +{parsed.Points} · нажмите «Добавить задачу»",
+            ReplyMarkup = BuildInlineInitialKeyboard(draftId)
         };
 
         await bot.AnswerInlineQuery(inline.Id, new[] { result }, cacheTime: 0, isPersonal: true, cancellationToken: ct);
@@ -350,7 +349,7 @@ public sealed class BotUpdateHandler
         await bot.SendMessage(chatId,
             "TgTodo — задачи и баллы для себя и семьи.\n\n" +
             "• Mini App — полный интерфейс\n" +
-            "• В любом чате: `@бот название +10` — личная или в общей группе\n" +
+            "• В любом чате: `@бот название +10` — сначала «Добавить задачу», потом личная или в общей группе\n" +
             "• /today — задачи на сегодня\n" +
             "• Ссылка-приглашение в группу (из /groups) — вступление без команды /join\n\n" +
             "/help — все команды",
@@ -541,6 +540,80 @@ public sealed class BotUpdateHandler
             cancellationToken: ct);
     }
 
+    private async Task HandleInlineOpenCallbackAsync(
+        ITelegramBotClient bot,
+        CallbackQuery callback,
+        User user,
+        string data,
+        CancellationToken ct)
+    {
+        var draftId = data["tstart:".Length..].Trim();
+        if (string.IsNullOrEmpty(draftId))
+        {
+            await bot.AnswerCallbackQuery(callback.Id, "Ошибка", showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        var draft = await _bff.GetInlineDraftAsync(draftId, ct);
+        if (draft is null)
+        {
+            await bot.AnswerCallbackQuery(callback.Id,
+                "Черновик не найден или истёк. Снова введите @бот и текст задачи.",
+                showAlert: true, cancellationToken: ct);
+            return;
+        }
+
+        var chatInstance = callback.ChatInstance ?? draft.ChatInstance;
+        _chatPeers.Remember(chatInstance, draftId, user.Id);
+        _chatPeers.Remember(chatInstance, draftId, draft.TelegramUserId);
+
+        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
+        var peerId = user.Id != draft.TelegramUserId
+            ? user.Id
+            : _chatPeers.TryGetSingleOtherPeer(chatInstance, draftId, draft.TelegramUserId);
+
+        IReadOnlyList<GroupDto> shared = [];
+        if (peerId is not null)
+            shared = await GetSharedGroupsAsync(
+                draft.TelegramUserId, authorName, peerId.Value, GetDisplayName(user), ct);
+
+        var markup = shared.Count > 0
+            ? BuildInlineAfterOpenKeyboard(draftId, personalAndGroup: true)
+            : BuildInlineAfterOpenKeyboard(draftId, personalAndGroup: false);
+
+        await BotCallbackMessages.TryEditReplyMarkupAsync(bot, callback, markup, _logger, ct);
+        await bot.AnswerCallbackQuery(callback.Id,
+            shared.Count > 0
+                ? "Выберите: личная или в общей группе TgTodo"
+                : "Добавьте личную задачу",
+            cancellationToken: ct);
+    }
+
+    private static InlineKeyboardMarkup BuildInlineInitialKeyboard(string draftId) =>
+        new(new[]
+        {
+            new[] { InlineKeyboardButton.WithCallbackData("📌 Добавить задачу", $"tstart:{draftId}") },
+            new[] { InlineKeyboardButton.WithCallbackData("⭕ Отклонить", $"tno:{draftId}") }
+        });
+
+    /// <summary>После «Добавить задачу»: две кнопки или одна «Личная задача».</summary>
+    private static InlineKeyboardMarkup BuildInlineAfterOpenKeyboard(string draftId, bool personalAndGroup) =>
+        personalAndGroup
+            ? new InlineKeyboardMarkup(new[]
+            {
+                new[]
+                {
+                    InlineKeyboardButton.WithCallbackData("🙋 Личная", $"tadd:p:{draftId}"),
+                    InlineKeyboardButton.WithCallbackData("👥 В группе", $"tadd:g:{draftId}")
+                },
+                new[] { InlineKeyboardButton.WithCallbackData("⭕ Отклонить", $"tno:{draftId}") }
+            })
+            : new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithCallbackData("🙋 Личная задача", $"tadd:p:{draftId}") },
+                new[] { InlineKeyboardButton.WithCallbackData("⭕ Отклонить", $"tno:{draftId}") }
+            });
+
     private async Task HandleInlineAddCallbackAsync(
         ITelegramBotClient bot,
         CallbackQuery callback,
@@ -589,24 +662,7 @@ public sealed class BotUpdateHandler
             return;
         }
 
-        await SyncInlineDraftKeyboardAsync(bot, callback, draft, user, ct);
-
         var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
-        if (user.Id != draft.TelegramUserId && !_draftKeyboards.IsEnriched(draftId))
-        {
-            _draftKeyboards.MarkEnriched(draftId);
-            var peerId = user.Id;
-            var sharedOnFirstTap = await GetSharedGroupsAsync(
-                draft.TelegramUserId, authorName, peerId, GetDisplayName(user), ct);
-            if (sharedOnFirstTap.Count > 0)
-            {
-                await bot.AnswerCallbackQuery(callback.Id,
-                    "Выберите: личная задача или в общей группе TgTodo",
-                    cancellationToken: ct);
-                return;
-            }
-        }
-
         var clickerName = GetDisplayName(user);
         var today = await TodayForUserAsync(user, ct);
 
@@ -621,7 +677,6 @@ public sealed class BotUpdateHandler
             }
 
             await _bff.DeleteInlineDraftAsync(draftId, ct);
-            _draftKeyboards.Forget(draftId);
             await bot.AnswerCallbackQuery(callback.Id, "Добавлено", cancellationToken: ct);
             await BotCallbackMessages.TryEditTextAsync(
                 bot, callback, $"✅ Личная задача: {draft.Title} (+{draft.Points})", _logger, cancellationToken: ct);
@@ -677,32 +732,11 @@ public sealed class BotUpdateHandler
         }
 
         await _bff.DeleteInlineDraftAsync(draftId, ct);
-        _draftKeyboards.Forget(draftId);
         await bot.AnswerCallbackQuery(callback.Id, "Назначено", cancellationToken: ct);
         await BotCallbackMessages.TryEditTextAsync(
             bot, callback,
             $"✅ В группе «{group.Name}» на вас: {draft.Title} (+{draft.Points})",
             _logger, cancellationToken: ct);
-    }
-
-    private static InlineKeyboardMarkup BuildInlineDraftKeyboard(string draftId, bool showGroupButton)
-    {
-        var rows = new List<List<InlineKeyboardButton>>
-        {
-            new() { InlineKeyboardButton.WithCallbackData("🙋 Личная", $"tadd:p:{draftId}") }
-        };
-
-        if (showGroupButton)
-        {
-            rows[0].Add(InlineKeyboardButton.WithCallbackData("👥 В группе", $"tadd:g:{draftId}"));
-        }
-
-        rows.Add(new List<InlineKeyboardButton>
-        {
-            InlineKeyboardButton.WithCallbackData("⭕ Отклонить", $"tno:{draftId}")
-        });
-
-        return new InlineKeyboardMarkup(rows);
     }
 
     private static InlineKeyboardMarkup BuildGroupPickerKeyboard(string draftId, IReadOnlyList<GroupDto> groups)
@@ -713,29 +747,6 @@ public sealed class BotUpdateHandler
             .ToList();
         rows.Add(new[] { InlineKeyboardButton.WithCallbackData("⭕ Отмена", $"tno:{draftId}") });
         return new InlineKeyboardMarkup(rows);
-    }
-
-    private async Task SyncInlineDraftKeyboardAsync(
-        ITelegramBotClient bot,
-        CallbackQuery callback,
-        InlineTaskDraftDto draft,
-        User clicker,
-        CancellationToken ct)
-    {
-        var chatInstance = callback.ChatInstance ?? draft.ChatInstance;
-        _chatPeers.Remember(chatInstance, draft.Id, clicker.Id);
-        _chatPeers.Remember(chatInstance, draft.Id, draft.TelegramUserId);
-
-        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
-        var peerId = clicker.Id != draft.TelegramUserId
-            ? clicker.Id
-            : _chatPeers.TryGetSingleOtherPeer(chatInstance, draft.Id, draft.TelegramUserId);
-
-        var showGroup = peerId is not null && await GetSharedGroupsAsync(
-            draft.TelegramUserId, authorName, peerId.Value, GetDisplayName(clicker), ct) is { Count: > 0 };
-
-        await BotCallbackMessages.TryEditReplyMarkupAsync(
-            bot, callback, BuildInlineDraftKeyboard(draft.Id, showGroup), _logger, ct);
     }
 
     private async Task<List<GroupDto>> GetSharedGroupsAsync(
@@ -822,6 +833,6 @@ public sealed class BotUpdateHandler
 
         *Inline в любом чате:*
         `@бот купить молоко +10 #группа`
-        → «Личная» / «В группе» (только если с собеседником есть общая группа TgTodo) / «Отклонить»
+        → «Добавить задачу», затем «Личная» и «В группе» (если с собеседником есть общая группа TgTodo) или одна «Личная задача»
         """;
 }
