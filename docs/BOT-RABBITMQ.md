@@ -74,7 +74,7 @@ BOT_RABBITMQ_HOST=
 | `HostName` | `Bot__RabbitMq__HostName` / `BOT_RABBITMQ_HOST` | Пусто → in-memory. `rabbitmq` в compose. |
 | `Port` | `Bot__RabbitMq__Port` | 5672 |
 | `UserName` | `Bot__RabbitMq__UserName` | |
-| `Password` | `Bot__RabbitMq__Password` | |
+| `Password` | `RABBITMQ_PASSWORD` в `deploy/.env` (тот же, что у сервиса `rabbitmq`) | Не `tgtodo`, если на проде задан сильный пароль |
 | `VirtualHost` | `Bot__RabbitMq__VirtualHost` | `/` |
 | `QueueName` | `Bot__RabbitMq__QueueName` | `tgbot.telegram.updates` |
 | `MaxConsumerChannels` | `Bot__RabbitMq__MaxConsumerChannels` | Параллельных consumer (≈ `Bot__MaxParallelUpdateHandlers`) |

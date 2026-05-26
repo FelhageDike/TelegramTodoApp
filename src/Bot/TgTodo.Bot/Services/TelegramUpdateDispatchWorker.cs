@@ -41,6 +41,22 @@ public sealed class TelegramUpdateDispatchWorker : BackgroundService
             "Update dispatcher started (transport: {Transport})",
             _options.RabbitMq.IsEnabled ? "RabbitMQ" : "in-memory channel");
 
-        await _ingress.RunDispatchLoopAsync(_bot, _handler, stoppingToken).ConfigureAwait(false);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await _ingress.RunDispatchLoopAsync(_bot, _handler, stoppingToken).ConfigureAwait(false);
+                return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Update dispatch loop failed; retry in 15s (check RABBITMQ_PASSWORD / Bot__RabbitMq__Password)");
+                await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken).ConfigureAwait(false);
+            }
+        }
     }
 }

@@ -146,7 +146,8 @@ services:
       Bot__RabbitMq__HostName: ${BOT_RABBITMQ_HOST:-rabbitmq}
       Bot__RabbitMq__Port: ${BOT_RABBITMQ_PORT:-5672}
       Bot__RabbitMq__UserName: ${BOT_RABBITMQ_USER:-tgtodo}
-      Bot__RabbitMq__Password: ${BOT_RABBITMQ_PASSWORD:-tgtodo}
+      # На проде тот же пароль, что у rabbitmq (RABBITMQ_PASSWORD в deploy/.env)
+      Bot__RabbitMq__Password: ${RABBITMQ_PASSWORD:-tgtodo}
       Bot__RabbitMq__VirtualHost: ${BOT_RABBITMQ_VHOST:-/}
       Bot__RabbitMq__QueueName: ${BOT_RABBITMQ_QUEUE:-tgbot.telegram.updates}
       Bot__RabbitMq__MaxConsumerChannels: ${BOT_RABBITMQ_CONSUMERS:-16}
