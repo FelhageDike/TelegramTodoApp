@@ -56,11 +56,26 @@ sudo ufw enable
 - Mini App URL: `https://tgtodo.ru/`
 - Menu Button → тот же URL
 
-## 4. GitHub
+## 4. GitHub Actions (push → деплой только изменённых сервисов)
 
-Секреты уже добавлены → каждый `git push` в `main` деплоит автоматически.
+После `git push` в `main`:
 
-Ручной деплой: **Actions → Deploy to VPS → Run workflow**.
+| Изменили | Пересоберётся на VPS |
+|----------|----------------------|
+| `src/Bot/**` | только `bot` |
+| `src/Gateway/**`, `src/Web/**` | только `bff` |
+| `src/Services/Identity/**` | только `identity` |
+| … Groups / Tasks / Gamification | соответствующий сервис |
+| `src/Shared/**` или `docker/Dockerfile.api` | все API + `bff` + `bot` |
+| `deploy/Caddyfile` | только `caddy` |
+
+**Не трогает:** `postgres`, `rabbitmq`, Portainer, volumes.
+
+Смотреть прогресс: **GitHub → Actions → Deploy to VPS**.
+
+Ручной деплой всего: **Actions → Run workflow** → галочка **deploy_all**.
+
+Секреты: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`. На сервере должен быть `deploy/.env`.
 
 ## 5. Обновить MINI_APP_URL в GitHub
 

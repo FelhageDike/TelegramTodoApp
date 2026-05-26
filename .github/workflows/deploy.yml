@@ -4,11 +4,91 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy_all:
+        description: Пересобрать все сервисы (identity, groups, tasks, gamification, bff, bot)
+        type: boolean
+        default: false
 
 jobs:
-  deploy:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      identity: ${{ steps.filter.outputs.identity }}
+      groups: ${{ steps.filter.outputs.groups }}
+      tasks: ${{ steps.filter.outputs.tasks }}
+      gamification: ${{ steps.filter.outputs.gamification }}
+      bff: ${{ steps.filter.outputs.bff }}
+      bot: ${{ steps.filter.outputs.bot }}
+      shared: ${{ steps.filter.outputs.shared }}
+      docker-api: ${{ steps.filter.outputs.docker-api }}
+      caddy: ${{ steps.filter.outputs.caddy }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            identity:
+              - 'src/Services/Identity/**'
+            groups:
+              - 'src/Services/Groups/**'
+            tasks:
+              - 'src/Services/Tasks/**'
+            gamification:
+              - 'src/Services/Gamification/**'
+            bff:
+              - 'src/Gateway/**'
+              - 'src/Web/**'
+              - 'docker/Dockerfile.bff'
+            bot:
+              - 'src/Bot/**'
+              - 'docker/Dockerfile.bot'
+            shared:
+              - 'src/Shared/**'
+            docker-api:
+              - 'docker/Dockerfile.api'
+            caddy:
+              - 'deploy/Caddyfile'
+              - 'deploy/docker-compose.prod.yml'
+
+  deploy:
+    needs: changes
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_all == 'true') ||
+      needs.changes.outputs.identity == 'true' ||
+      needs.changes.outputs.groups == 'true' ||
+      needs.changes.outputs.tasks == 'true' ||
+      needs.changes.outputs.gamification == 'true' ||
+      needs.changes.outputs.bff == 'true' ||
+      needs.changes.outputs.bot == 'true' ||
+      needs.changes.outputs.shared == 'true' ||
+      needs.changes.outputs.docker-api == 'true' ||
+      needs.changes.outputs.caddy == 'true'
+    steps:
+      - name: Prepare service list
+        id: prep
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.deploy_all }}" == "true" ]]; then
+            echo "services=identity groups tasks gamification bff bot" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "${{ needs.changes.outputs.shared }}" == "true" || "${{ needs.changes.outputs.docker-api }}" == "true" ]]; then
+            echo "services=identity groups tasks gamification bff bot" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          s=""
+          [[ "${{ needs.changes.outputs.identity }}" == "true" ]] && s="$s identity"
+          [[ "${{ needs.changes.outputs.groups }}" == "true" ]] && s="$s groups"
+          [[ "${{ needs.changes.outputs.tasks }}" == "true" ]] && s="$s tasks"
+          [[ "${{ needs.changes.outputs.gamification }}" == "true" ]] && s="$s gamification"
+          [[ "${{ needs.changes.outputs.bff }}" == "true" ]] && s="$s bff"
+          [[ "${{ needs.changes.outputs.bot }}" == "true" ]] && s="$s bot"
+          [[ "${{ needs.changes.outputs.caddy }}" == "true" ]] && s="$s caddy"
+          s="${s# }"
+          echo "services=$s" >> "$GITHUB_OUTPUT"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -17,13 +97,11 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
+            SERVICES="${{ steps.prep.outputs.services }}"
+            echo "Services: $SERVICES"
             APP_DIR=~/TelegramTodoApp
             if [ ! -d "$APP_DIR/.git" ]; then
               git clone https://github.com/FelhageDike/TelegramTodoApp.git "$APP_DIR"
             fi
-            cd "$APP_DIR"
-            git fetch origin main
-            git reset --hard origin/main
-            cd deploy
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d --build
-            docker image prune -f
+            chmod +x "$APP_DIR/deploy/scripts/deploy-services.sh"
+            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICES"
