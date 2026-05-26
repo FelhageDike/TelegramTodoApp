@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy_all:
-        description: Пересобрать все сервисы (identity, groups, tasks, gamification, bff, bot)
+        description: Пересобрать все сервисы (identity → … → caddy)
         type: boolean
         default: false
 
@@ -52,57 +52,188 @@ jobs:
               - 'deploy/Caddyfile'
               - 'deploy/docker-compose.prod.yml'
 
-  deploy:
+  deploy-identity:
+    name: Deploy identity
     needs: changes
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_all == 'true') ||
       needs.changes.outputs.identity == 'true' ||
-      needs.changes.outputs.groups == 'true' ||
-      needs.changes.outputs.tasks == 'true' ||
-      needs.changes.outputs.gamification == 'true' ||
-      needs.changes.outputs.bff == 'true' ||
-      needs.changes.outputs.bot == 'true' ||
       needs.changes.outputs.shared == 'true' ||
       needs.changes.outputs.docker-api == 'true' ||
-      needs.changes.outputs.caddy == 'true'
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_all == 'true')
     steps:
-      - name: Prepare service list
-        id: prep
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.deploy_all }}" == "true" ]]; then
-            echo "services=identity groups tasks gamification bff bot" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [[ "${{ needs.changes.outputs.shared }}" == "true" || "${{ needs.changes.outputs.docker-api }}" == "true" ]]; then
-            echo "services=identity groups tasks gamification bff bot" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          s=""
-          [[ "${{ needs.changes.outputs.identity }}" == "true" ]] && s="$s identity"
-          [[ "${{ needs.changes.outputs.groups }}" == "true" ]] && s="$s groups"
-          [[ "${{ needs.changes.outputs.tasks }}" == "true" ]] && s="$s tasks"
-          [[ "${{ needs.changes.outputs.gamification }}" == "true" ]] && s="$s gamification"
-          [[ "${{ needs.changes.outputs.bff }}" == "true" ]] && s="$s bff"
-          [[ "${{ needs.changes.outputs.bot }}" == "true" ]] && s="$s bot"
-          [[ "${{ needs.changes.outputs.caddy }}" == "true" ]] && s="$s caddy"
-          s="${s# }"
-          echo "services=$s" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          SERVICE: identity
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 90m
+          command_timeout: 25m
+          envs: SERVICE
           script: |
             set -e
-            SERVICES="${{ steps.prep.outputs.services }}"
-            echo "Services: $SERVICES"
             APP_DIR=~/TelegramTodoApp
             if [ ! -d "$APP_DIR/.git" ]; then
               git clone https://github.com/FelhageDike/TelegramTodoApp.git "$APP_DIR"
             fi
             chmod +x "$APP_DIR/deploy/scripts/deploy-services.sh"
-            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICES"
+            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICE"
+
+  deploy-groups:
+    name: Deploy groups
+    needs: [changes, deploy-identity]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      (needs.deploy-identity.result == 'success' || needs.deploy-identity.result == 'skipped') &&
+      (needs.changes.outputs.groups == 'true' ||
+       needs.changes.outputs.shared == 'true' ||
+       needs.changes.outputs.docker-api == 'true' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_all == 'true'))
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          SERVICE: groups
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 25m
+          envs: SERVICE
+          script: |
+            set -e
+            APP_DIR=~/TelegramTodoApp
+            chmod +x "$APP_DIR/deploy/scripts/deploy-services.sh"
+            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICE"
+
+  deploy-tasks:
+    name: Deploy tasks
+    needs: [changes, deploy-groups]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      (needs.deploy-groups.result == 'success' || needs.deploy-groups.result == 'skipped') &&
+      (needs.changes.outputs.tasks == 'true' ||
+       needs.changes.outputs.shared == 'true' ||
+       needs.changes.outputs.docker-api == 'true' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_all == 'true'))
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          SERVICE: tasks
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 25m
+          envs: SERVICE
+          script: |
+            set -e
+            APP_DIR=~/TelegramTodoApp
+            chmod +x "$APP_DIR/deploy/scripts/deploy-services.sh"
+            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICE"
+
+  deploy-gamification:
+    name: Deploy gamification
+    needs: [changes, deploy-tasks]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      (needs.deploy-tasks.result == 'success' || needs.deploy-tasks.result == 'skipped') &&
+      (needs.changes.outputs.gamification == 'true' ||
+       needs.changes.outputs.shared == 'true' ||
+       needs.changes.outputs.docker-api == 'true' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_all == 'true'))
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          SERVICE: gamification
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 25m
+          envs: SERVICE
+          script: |
+            set -e
+            APP_DIR=~/TelegramTodoApp
+            chmod +x "$APP_DIR/deploy/scripts/deploy-services.sh"
+            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICE"
+
+  deploy-bff:
+    name: Deploy bff
+    needs: [changes, deploy-gamification]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      (needs.deploy-gamification.result == 'success' || needs.deploy-gamification.result == 'skipped') &&
+      (needs.changes.outputs.bff == 'true' ||
+       needs.changes.outputs.shared == 'true' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_all == 'true'))
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          SERVICE: bff
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 25m
+          envs: SERVICE
+          script: |
+            set -e
+            APP_DIR=~/TelegramTodoApp
+            chmod +x "$APP_DIR/deploy/scripts/deploy-services.sh"
+            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICE"
+
+  deploy-bot:
+    name: Deploy bot
+    needs: [changes, deploy-bff]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      (needs.deploy-bff.result == 'success' || needs.deploy-bff.result == 'skipped') &&
+      (needs.changes.outputs.bot == 'true' ||
+       needs.changes.outputs.shared == 'true' ||
+       needs.changes.outputs.docker-api == 'true' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_all == 'true'))
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          SERVICE: bot
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 25m
+          envs: SERVICE
+          script: |
+            set -e
+            APP_DIR=~/TelegramTodoApp
+            chmod +x "$APP_DIR/deploy/scripts/deploy-services.sh"
+            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICE"
+
+  deploy-caddy:
+    name: Deploy caddy
+    needs: [changes, deploy-bot]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      (needs.deploy-bot.result == 'success' || needs.deploy-bot.result == 'skipped') &&
+      needs.changes.outputs.caddy == 'true'
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          SERVICE: caddy
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 10m
+          envs: SERVICE
+          script: |
+            set -e
+            APP_DIR=~/TelegramTodoApp
+            chmod +x "$APP_DIR/deploy/scripts/deploy-services.sh"
+            "$APP_DIR/deploy/scripts/deploy-services.sh" "$SERVICE"

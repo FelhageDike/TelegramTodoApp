@@ -73,9 +73,9 @@ sudo ufw enable
 
 **Не трогает:** `postgres`, `rabbitmq`, Portainer, volumes.
 
-Смотреть прогресс: **GitHub → Actions → Deploy to VPS**.
+Смотреть прогресс: **GitHub → Actions → Deploy to VPS** — отдельные jobs: `Deploy identity`, `Deploy groups`, … (по цепочке).
 
-Ручной деплой всего: **Actions → Run workflow** → галочка **deploy_all**.
+Ручной деплой всего: **Actions → Run workflow** → галочка **deploy_all** (пройдёт все jobs по порядку).
 
 Секреты: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`. На сервере должен быть `deploy/.env`.
 
