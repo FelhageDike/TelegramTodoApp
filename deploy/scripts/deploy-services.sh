@@ -21,7 +21,7 @@ echo "=== Деплой: $SERVICES ==="
 # БД должны быть запущены (образы, без сборки)
 "${COMPOSE[@]}" up -d postgres rabbitmq
 
-"${COMPOSE[@]}" build --no-deps $SERVICES
+"${COMPOSE[@]}" build $SERVICES
 "${COMPOSE[@]}" up -d --no-build $SERVICES
 
 echo "=== Статус ==="
