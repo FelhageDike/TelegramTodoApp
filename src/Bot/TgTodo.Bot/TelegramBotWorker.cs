@@ -28,7 +28,8 @@ public sealed class TelegramBotWorker : BackgroundService
     {
         if (string.IsNullOrWhiteSpace(_options.Token))
         {
-            _logger.LogWarning("BOT_TOKEN is empty — bot is disabled");
+            _logger.LogWarning("BOT_TOKEN is empty — bot idle until token is set in deploy/.env");
+            await Task.Delay(Timeout.Infinite, stoppingToken);
             return;
         }
 
@@ -37,8 +38,8 @@ public sealed class TelegramBotWorker : BackgroundService
         var me = await WaitForTelegramAsync(stoppingToken);
         if (me is null)
         {
-            _logger.LogError("Cannot reach api.telegram.org — check network/VPN. Retrying in background.");
-            _ = RetryConnectLoopAsync(stoppingToken);
+            _logger.LogError("Cannot reach api.telegram.org — retrying every 30s (check firewall/DNS)");
+            await RetryConnectLoopAsync(stoppingToken);
             return;
         }
 
