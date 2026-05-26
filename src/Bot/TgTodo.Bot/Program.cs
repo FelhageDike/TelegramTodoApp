@@ -23,6 +23,8 @@ builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 });
 
 builder.Services.AddSingleton<UserSessionStore>();
+builder.Services.AddSingleton<InlineChatPeerStore>();
+builder.Services.AddSingleton<InlineDraftKeyboardStore>();
 builder.Services.AddSingleton<BotUpdateHandler>();
 builder.Services.AddSingleton<UpdateIngestQueue>();
 builder.Services.AddSingleton<ChannelTelegramUpdateIngress>();

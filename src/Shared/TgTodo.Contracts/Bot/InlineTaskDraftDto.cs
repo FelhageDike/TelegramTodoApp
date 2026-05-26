@@ -8,6 +8,8 @@ public sealed class InlineTaskDraftDto
     public string Id { get; set; } = "";
     public long TelegramUserId { get; set; }
     public string AuthorDisplayName { get; set; } = "";
+    /// <summary>chat_instance из inline/callback — идентификатор чата, куда ушла карточка.</summary>
+    public string? ChatInstance { get; set; }
     public string Title { get; set; } = "";
     public int Points { get; set; }
     public Guid? GroupId { get; set; }

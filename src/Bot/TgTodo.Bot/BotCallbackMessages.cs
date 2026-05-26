@@ -47,4 +47,37 @@ internal static class BotCallbackMessages
                 callback.Message is not null);
         }
     }
+
+    public static async Task TryEditReplyMarkupAsync(
+        ITelegramBotClient bot,
+        CallbackQuery callback,
+        InlineKeyboardMarkup? replyMarkup,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(callback.InlineMessageId))
+            {
+                await bot.EditMessageReplyMarkup(
+                    callback.InlineMessageId,
+                    replyMarkup: replyMarkup,
+                    cancellationToken: cancellationToken);
+                return;
+            }
+
+            if (callback.Message is { } message)
+            {
+                await bot.EditMessageReplyMarkup(
+                    message.Chat.Id,
+                    message.MessageId,
+                    replyMarkup: replyMarkup,
+                    cancellationToken: cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to edit inline reply markup");
+        }
+    }
 }

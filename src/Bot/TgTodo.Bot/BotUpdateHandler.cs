@@ -20,6 +20,8 @@ public sealed class BotUpdateHandler
     private readonly BotOptions _options;
     private readonly BffClient _bff;
     private readonly UserSessionStore _sessions;
+    private readonly InlineChatPeerStore _chatPeers;
+    private readonly InlineDraftKeyboardStore _draftKeyboards;
     private readonly ILogger<BotUpdateHandler> _logger;
     private readonly object _botUsernameLock = new();
     private string? _cachedBotUsername;
@@ -28,11 +30,15 @@ public sealed class BotUpdateHandler
         IOptions<BotOptions> options,
         BffClient bff,
         UserSessionStore sessions,
+        InlineChatPeerStore chatPeers,
+        InlineDraftKeyboardStore draftKeyboards,
         ILogger<BotUpdateHandler> logger)
     {
         _options = options.Value;
         _bff = bff;
         _sessions = sessions;
+        _chatPeers = chatPeers;
+        _draftKeyboards = draftKeyboards;
         _logger = logger;
     }
 
@@ -191,6 +197,7 @@ public sealed class BotUpdateHandler
         {
             var draftId = data["tno:".Length..];
             await _bff.DeleteInlineDraftAsync(draftId, ct);
+            _draftKeyboards.Forget(draftId);
             await bot.AnswerCallbackQuery(callback.Id, cancellationToken: ct);
             await BotCallbackMessages.TryEditTextAsync(bot, callback, "Задача отклонена", _logger, cancellationToken: ct);
             return;
@@ -265,6 +272,8 @@ public sealed class BotUpdateHandler
         var startDate = await TodayForUserAsync(user, ct);
         var draftId = Guid.NewGuid().ToString("N")[..12];
 
+        _chatPeers.Remember(null, draftId, user.Id);
+
         var draftDto = new InlineTaskDraftDto
         {
             Id = draftId,
@@ -297,6 +306,9 @@ public sealed class BotUpdateHandler
             return;
         }
 
+        // Кнопку «В группе» показываем только после callback, когда известен chat_instance и собеседник.
+        var showGroupButton = false;
+
         var messageText = $"📋 *Задача:* {EscapeMarkdown(parsed.Title)}";
         var result = new InlineQueryResultArticle(
             draftId,
@@ -304,7 +316,7 @@ public sealed class BotUpdateHandler
             new InputTextMessageContent(messageText) { ParseMode = ParseMode.Markdown })
         {
             Description = $"{scopeLabel} · +{parsed.Points} баллов",
-            ReplyMarkup = BuildInlineDraftKeyboard(draftId, groupId.HasValue)
+            ReplyMarkup = BuildInlineDraftKeyboard(draftId, showGroupButton)
         };
 
         await bot.AnswerInlineQuery(inline.Id, new[] { result }, cacheTime: 0, isPersonal: true, cancellationToken: ct);
@@ -577,6 +589,24 @@ public sealed class BotUpdateHandler
             return;
         }
 
+        await SyncInlineDraftKeyboardAsync(bot, callback, draft, user, ct);
+
+        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
+        if (user.Id != draft.TelegramUserId && !_draftKeyboards.IsEnriched(draftId))
+        {
+            _draftKeyboards.MarkEnriched(draftId);
+            var peerId = user.Id;
+            var sharedOnFirstTap = await GetSharedGroupsAsync(
+                draft.TelegramUserId, authorName, peerId, GetDisplayName(user), ct);
+            if (sharedOnFirstTap.Count > 0)
+            {
+                await bot.AnswerCallbackQuery(callback.Id,
+                    "Выберите: личная задача или в общей группе TgTodo",
+                    cancellationToken: ct);
+                return;
+            }
+        }
+
         var clickerName = GetDisplayName(user);
         var today = await TodayForUserAsync(user, ct);
 
@@ -591,13 +621,13 @@ public sealed class BotUpdateHandler
             }
 
             await _bff.DeleteInlineDraftAsync(draftId, ct);
+            _draftKeyboards.Forget(draftId);
             await bot.AnswerCallbackQuery(callback.Id, "Добавлено", cancellationToken: ct);
             await BotCallbackMessages.TryEditTextAsync(
                 bot, callback, $"✅ Личная задача: {draft.Title} (+{draft.Points})", _logger, cancellationToken: ct);
             return;
         }
 
-        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
         var shared = await GetSharedGroupsAsync(draft.TelegramUserId, authorName, user.Id, clickerName, ct);
         if (shared.Count == 0)
         {
@@ -647,6 +677,7 @@ public sealed class BotUpdateHandler
         }
 
         await _bff.DeleteInlineDraftAsync(draftId, ct);
+        _draftKeyboards.Forget(draftId);
         await bot.AnswerCallbackQuery(callback.Id, "Назначено", cancellationToken: ct);
         await BotCallbackMessages.TryEditTextAsync(
             bot, callback,
@@ -654,18 +685,25 @@ public sealed class BotUpdateHandler
             _logger, cancellationToken: ct);
     }
 
-    private static InlineKeyboardMarkup BuildInlineDraftKeyboard(string draftId, bool authorHasGroupHint) =>
-        new(new[]
+    private static InlineKeyboardMarkup BuildInlineDraftKeyboard(string draftId, bool showGroupButton)
+    {
+        var rows = new List<List<InlineKeyboardButton>>
         {
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData("🙋 Личная", $"tadd:p:{draftId}"),
-                InlineKeyboardButton.WithCallbackData(
-                    authorHasGroupHint ? "👥 В группе" : "👥 Общая группа",
-                    $"tadd:g:{draftId}")
-            },
-            new[] { InlineKeyboardButton.WithCallbackData("⭕ Отклонить", $"tno:{draftId}") }
+            new() { InlineKeyboardButton.WithCallbackData("🙋 Личная", $"tadd:p:{draftId}") }
+        };
+
+        if (showGroupButton)
+        {
+            rows[0].Add(InlineKeyboardButton.WithCallbackData("👥 В группе", $"tadd:g:{draftId}"));
+        }
+
+        rows.Add(new List<InlineKeyboardButton>
+        {
+            InlineKeyboardButton.WithCallbackData("⭕ Отклонить", $"tno:{draftId}")
         });
+
+        return new InlineKeyboardMarkup(rows);
+    }
 
     private static InlineKeyboardMarkup BuildGroupPickerKeyboard(string draftId, IReadOnlyList<GroupDto> groups)
     {
@@ -677,6 +715,29 @@ public sealed class BotUpdateHandler
         return new InlineKeyboardMarkup(rows);
     }
 
+    private async Task SyncInlineDraftKeyboardAsync(
+        ITelegramBotClient bot,
+        CallbackQuery callback,
+        InlineTaskDraftDto draft,
+        User clicker,
+        CancellationToken ct)
+    {
+        var chatInstance = callback.ChatInstance ?? draft.ChatInstance;
+        _chatPeers.Remember(chatInstance, draft.Id, clicker.Id);
+        _chatPeers.Remember(chatInstance, draft.Id, draft.TelegramUserId);
+
+        var authorName = string.IsNullOrWhiteSpace(draft.AuthorDisplayName) ? "User" : draft.AuthorDisplayName;
+        var peerId = clicker.Id != draft.TelegramUserId
+            ? clicker.Id
+            : _chatPeers.TryGetSingleOtherPeer(chatInstance, draft.Id, draft.TelegramUserId);
+
+        var showGroup = peerId is not null && await GetSharedGroupsAsync(
+            draft.TelegramUserId, authorName, peerId.Value, GetDisplayName(clicker), ct) is { Count: > 0 };
+
+        await BotCallbackMessages.TryEditReplyMarkupAsync(
+            bot, callback, BuildInlineDraftKeyboard(draft.Id, showGroup), _logger, ct);
+    }
+
     private async Task<List<GroupDto>> GetSharedGroupsAsync(
         long authorTelegramId,
         string authorDisplayName,
@@ -684,10 +745,10 @@ public sealed class BotUpdateHandler
         string clickerDisplayName,
         CancellationToken ct)
     {
-        var authorGroups = await _bff.GetGroupsAsync(authorTelegramId, authorDisplayName, ct) ?? [];
         if (authorTelegramId == clickerTelegramId)
-            return authorGroups;
+            return [];
 
+        var authorGroups = await _bff.GetGroupsAsync(authorTelegramId, authorDisplayName, ct) ?? [];
         var clickerGroups = await _bff.GetGroupsAsync(clickerTelegramId, clickerDisplayName, ct) ?? [];
         var clickerIds = clickerGroups.Select(g => g.Id).ToHashSet();
         return authorGroups.Where(g => clickerIds.Contains(g.Id)).ToList();
@@ -761,6 +822,6 @@ public sealed class BotUpdateHandler
 
         *Inline в любом чате:*
         `@бот купить молоко +10 #группа`
-        → «Личная» / «Общая группа» (если есть общая группа TgTodo) / «Отклонить»
+        → «Личная» / «В группе» (только если с собеседником есть общая группа TgTodo) / «Отклонить»
         """;
 }
