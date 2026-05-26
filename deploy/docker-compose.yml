@@ -132,13 +132,29 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.bot
     environment:
+      ASPNETCORE_URLS: http://+:8080
       Bot__Token: ${BOT_TOKEN:-}
       Bot__BffBaseUrl: http://bff:8080
       Bot__MiniAppUrl: ${MINI_APP_URL:-http://localhost:5000/}
       Bot__InternalKey: ${BOT_INTERNAL_KEY:-dev-bot-key}
+      Bot__DeliveryMode: ${BOT_DELIVERY_MODE:-Polling}
+      Bot__WebhookPublicBaseUrl: ${BOT_WEBHOOK_PUBLIC_BASE_URL:-}
+      Bot__WebhookPath: ${BOT_WEBHOOK_PATH:-/telegram/webhook}
+      Bot__WebhookSecretToken: ${BOT_WEBHOOK_SECRET_TOKEN:-}
+      Bot__UpdateQueueCapacity: ${BOT_UPDATE_QUEUE_CAPACITY:-2000}
+      Bot__MaxParallelUpdateHandlers: ${BOT_MAX_PARALLEL_UPDATES:-16}
+      Bot__RabbitMq__HostName: ${BOT_RABBITMQ_HOST:-rabbitmq}
+      Bot__RabbitMq__Port: ${BOT_RABBITMQ_PORT:-5672}
+      Bot__RabbitMq__UserName: ${BOT_RABBITMQ_USER:-tgtodo}
+      Bot__RabbitMq__Password: ${BOT_RABBITMQ_PASSWORD:-tgtodo}
+      Bot__RabbitMq__VirtualHost: ${BOT_RABBITMQ_VHOST:-/}
+      Bot__RabbitMq__QueueName: ${BOT_RABBITMQ_QUEUE:-tgbot.telegram.updates}
+      Bot__RabbitMq__MaxConsumerChannels: ${BOT_RABBITMQ_CONSUMERS:-16}
     depends_on:
       bff:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

@@ -2,6 +2,8 @@ using Serilog;
 using TgTodo.Bff.Auth;
 using TgTodo.Bff.Clients;
 using TgTodo.Bff.Endpoints;
+using TgTodo.Bff.Services;
+using TgTodo.Contracts.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +31,7 @@ builder.Services.AddHttpClient<GamificationApiClient>((sp, client) =>
     var config = sp.GetRequiredService<IConfiguration>();
     client.BaseAddress = new Uri(config["Services:Gamification"]!);
 });
+builder.Services.AddSingleton<BotInlineDraftStore>();
 
 var app = builder.Build();
 
@@ -47,6 +50,26 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 app.UseMiddleware<TelegramAuthMiddleware>();
+app.MapPost("/bff/internal/bot/drafts", (InlineTaskDraftDto draft, BotInlineDraftStore store) =>
+{
+    store.Upsert(draft);
+    return Results.Ok();
+});
+app.MapGet("/bff/internal/bot/drafts/{id}", (string id, BotInlineDraftStore store) =>
+{
+    var d = store.Get(id);
+    return d is null ? Results.NotFound() : Results.Json(d);
+});
+app.MapDelete("/bff/internal/bot/drafts/{id}", (string id, BotInlineDraftStore store) =>
+{
+    store.Delete(id);
+    return Results.NoContent();
+});
+app.MapPost("/bff/internal/bot/drafts/prune", (BotInlineDraftStore store) =>
+{
+    store.CleanupExpired();
+    return Results.Ok();
+});
 app.MapBffEndpoints();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "bff" }));
 app.MapFallback(async context =>

@@ -1,8 +1,10 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using TgTodo.Bot;
+using TgTodo.Contracts.Bot;
 using TgTodo.Contracts.Enums;
 
 namespace TgTodo.Bot.Services;
@@ -82,6 +84,35 @@ public sealed class BffClient
         return await ReadResultAsync<TaskDto>(response, ct);
     }
 
+    public async Task SaveInlineDraftAsync(InlineTaskDraftDto draft, CancellationToken ct)
+    {
+        var response = await SendInternalDraftsAsync(HttpMethod.Post, "bff/internal/bot/drafts", JsonContent.Create(draft), ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<InlineTaskDraftDto?> GetInlineDraftAsync(string draftId, CancellationToken ct)
+    {
+        var response = await SendInternalDraftsAsync(HttpMethod.Get, $"bff/internal/bot/drafts/{Uri.EscapeDataString(draftId)}", null, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<InlineTaskDraftDto>(cancellationToken: ct);
+    }
+
+    public async Task DeleteInlineDraftAsync(string draftId, CancellationToken ct)
+    {
+        var response = await SendInternalDraftsAsync(HttpMethod.Delete, $"bff/internal/bot/drafts/{Uri.EscapeDataString(draftId)}", null, ct);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.NoContent)
+            return;
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task PruneInlineDraftsAsync(CancellationToken ct)
+    {
+        var response = await SendInternalDraftsAsync(HttpMethod.Post, "bff/internal/bot/drafts/prune", null, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     private Task<HttpResponseMessage> SendAsync(long telegramId, string displayName, HttpMethod method, string url, CancellationToken ct) =>
         SendAsync(telegramId, displayName, method, url, null, ct);
 
@@ -91,6 +122,13 @@ public sealed class BffClient
         request.Headers.TryAddWithoutValidation("X-TgTodo-Bot-Key", _options.InternalKey);
         request.Headers.TryAddWithoutValidation("X-Telegram-User-Id", telegramId.ToString());
         request.Headers.TryAddWithoutValidation("X-Telegram-Display-Name", EncodeDisplayName(displayName));
+        return _http.SendAsync(request, ct);
+    }
+
+    private Task<HttpResponseMessage> SendInternalDraftsAsync(HttpMethod method, string url, HttpContent? content, CancellationToken ct)
+    {
+        var request = new HttpRequestMessage(method, url) { Content = content };
+        request.Headers.TryAddWithoutValidation("X-TgTodo-Bot-Key", _options.InternalKey);
         return _http.SendAsync(request, ct);
     }
 

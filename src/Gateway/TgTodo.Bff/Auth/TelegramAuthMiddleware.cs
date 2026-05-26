@@ -24,6 +24,24 @@ public class TelegramAuthMiddleware
             return;
         }
 
+        // Черновики inline: только ключ бота (без initData и без Identity на этом шаге не нужен).
+        var pathValue = path.Value ?? "";
+        if (pathValue.StartsWith("/bff/internal/bot/drafts", StringComparison.Ordinal))
+        {
+            var internalKey = configuration["Bot:InternalKey"] ?? configuration["Bot__InternalKey"];
+            if (string.IsNullOrEmpty(internalKey) ||
+                !context.Request.Headers.TryGetValue("X-TgTodo-Bot-Key", out var draftKey) ||
+                draftKey != internalKey)
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "Unauthorized" });
+                return;
+            }
+
+            await _next(context);
+            return;
+        }
+
         if (!path.StartsWithSegments("/bff"))
         {
             await _next(context);

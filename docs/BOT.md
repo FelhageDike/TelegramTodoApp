@@ -1,6 +1,6 @@
 # Telegram Bot — команды MVP и inline-создание задач
 
-Сейчас в репозитории реализованы **Mini App + BFF + микросервисы**. Отдельного процесса бота (`polling` / `webhook`) **ещё нет** — ниже спецификация команд и гайд по inline-режиму для реализации. Все операции бот должен проксировать в те же API, что и Mini App (через BFF или напрямую в сервисы с `X-User-Id` после `EnsureUser` по `telegram_id`).
+Сейчас в репозитории реализованы **Mini App + BFF + микросервисы** и отдельный процесс **`TgTodo.Bot`** (long polling). Все операции бот проксирует в BFF с заголовками `X-TgTodo-Bot-Key` и `X-Telegram-User-Id` (см. `TelegramAuthMiddleware`).
 
 ---
 
@@ -40,12 +40,13 @@ help - Справка по командам
 
 | Команда | MVP-функция | BFF / API | Поведение в боте |
 |---------|-------------|-----------|------------------|
-| `/start` | Вход, профиль | `Identity` ensure user | Приветствие, кнопка «Открыть приложение» (`web_app`) |
+| `/start` | Вход, профиль | `Identity` ensure user | Приветствие, кнопка Mini App |
+| `/start join_КОД` | Вступление (deep link) | `POST /bff/groups/join` | То же, что `/join КОД`, после перехода по `https://t.me/<бот>?start=join_<код>` |
 | `/app` | Mini App | URL приложения | Inline-кнопка с `WebAppInfo` |
 | `/today` | Задачи на день | `GET /bff/home?groupId=&date=` | Список задач; кнопки ✅ по `taskId` |
 | `/balance` | Два счёта | `GET /bff/balance?groupId=` | «Личный: N», «Группа: M» (если выбран контекст) |
 | `/history` | Ledger | `GET /bff/ledger?take=50` | Последние 5–10 строк: дата, ±баллы, причина |
-| `/groups` | Список групп | `GET /bff/groups` | Имена + invite-код; кнопка «Выбрать группу» |
+| `/groups` | Список групп | `GET /bff/groups` | Имена + invite-код + **ссылка** `https://t.me/<бот>?start=join_<код>`; кнопки контекста |
 | `/newgroup` | Создание группы | `POST /bff/groups` | Диалог: название → код приглашения |
 | `/join КОД` | Вступление | `POST /bff/groups/join` | 6 символов, латиница/цифры |
 | *(контекст)* | Выход / удаление группы | `POST leave`, `DELETE group` | Только в Mini App или `/groups` → inline-меню (owner) |
@@ -112,7 +113,8 @@ sequenceDiagram
 
     U->>TG: @бот купить молоко
     TG->>B: inline_query
-    B->>B: parse query, save draft
+    B->>B: parse query, draft → BFF
+    B->>API: POST /bff/internal/bot/drafts
     B->>TG: answerInlineQuery (article + keyboard)
     U->>TG: выбрать результат
     TG->>U: сообщение в чате + кнопки
@@ -185,14 +187,14 @@ sequenceDiagram
 Ограничения:
 
 - `callback_data` ≤ **64 байта** — используйте короткий `draftId` (GUID без дефисов или ulid).
-- Черновик храните **5–15 минут** (Redis): `{ draftId, telegramUserId, title, points, groupId?, chatId?, inlineMessageId? }`.
+- Черновик храните **5–15 минут** в **BFF** (`POST/GET/DELETE /bff/internal/bot/drafts`, ключ только `X-TgTodo-Bot-Key`), чтобы пережить рестарт процесса бота. Периодически бот вызывает `POST .../drafts/prune`.
 
 ### 3.5. Обработка callback
 
 | `callback_data` | Действие |
 |-----------------|----------|
-| `tadd:{draftId}` | `EnsureUser` → `POST /bff/tasks` → `answerCallbackQuery("Добавлено")` → `editMessageText` с ✅ |
-| `tno:{draftId}` | Удалить черновик → `editMessageText` «Отклонено» или `deleteMessage` |
+| `tadd:{draftId}` | `GET /bff/internal/bot/drafts/{id}` → `EnsureUser` → `POST /bff/tasks` → удалить черновик → ответ пользователю |
+| `tno:{draftId}` | `DELETE /bff/internal/bot/drafts/{id}` → правка сообщения |
 
 Тело создания задачи (как Mini App по умолчанию):
 
@@ -252,9 +254,14 @@ bot.OnCallbackQuery(async (client, cq, ct) =>
     {
         var draftId = cq.Data["tadd:".Length..];
         var draft = await drafts.GetAsync(draftId, ct);
-        if (draft is null || draft.TelegramUserId != cq.From.Id)
+        if (draft is null)
         {
-            await client.AnswerCallbackQuery(cq.Id, "Черновик устарел", showAlert: true, cancellationToken: ct);
+            await client.AnswerCallbackQuery(cq.Id, "Черновик не найден или истёк…", showAlert: true, cancellationToken: ct);
+            return;
+        }
+        if (draft.TelegramUserId != cq.From.Id)
+        {
+            await client.AnswerCallbackQuery(cq.Id, "Добавить может только автор карточки.", showAlert: true, cancellationToken: ct);
             return;
         }
 
@@ -275,14 +282,22 @@ bot.OnCallbackQuery(async (client, cq, ct) =>
 
 NuGet: `Telegram.Bot` (актуальная v21+).
 
-### 3.7. Webhook vs polling
+### 3.7. Webhook, очередь и параллельная обработка
+
+В `TgTodo.Bot` реализовано:
+
+1. **Приём** — long polling или **HTTPS webhook** (`Bot:DeliveryMode`).
+2. **Очередь** — по умолчанию в Docker: **RabbitMQ** (`Bot:RabbitMq:HostName=rabbitmq`). Без хоста — in-memory канал. Подробный гайд: **[BOT-RABBITMQ.md](./BOT-RABBITMQ.md)**.
+3. **Обработка** — параллельные consumer’ы (RabbitMQ: `MaxConsumerChannels`, in-memory: `MaxParallelUpdateHandlers`).
 
 | Режим | Когда |
 |-------|--------|
-| **Polling** | Локальная разработка (`dotnet run`, ngrok не обязателен для бота) |
-| **Webhook** | Прод: `https://<domain>/telegram/webhook` + секрет в заголовке |
+| **Polling** | Локально, простой Docker без публичного URL бота (`BOT_DELIVERY_MODE` не задан или `Polling`) |
+| **Webhook** | Прод: публичный URL на контейнер бота (или reverse proxy), `BOT_DELIVERY_MODE=Webhook`, задать `BOT_WEBHOOK_PUBLIC_BASE_URL` и длинный `BOT_WEBHOOK_SECRET_TOKEN` |
 
-Бот — отдельный проект `src/Bot/TgTodo.Bot`, в `docker-compose` рядом с BFF. Mini App и бот могут делить `BOT_TOKEN`; для вызовов API бот после `EnsureUser` подставляет внутренний `userId`, не `initData` (отдельный service-to-service или dev-заголовок только на внутренней сети).
+Kestrel слушает **`ASPNETCORE_URLS`** (в compose для бота: `http://+:8080`). Прокси (Caddy/Nginx) должен пробрасывать HTTPS на этот порт и путь webhook.
+
+Бот — проект `src/Bot/TgTodo.Bot` (SDK Web + hosted services). Mini App и бот делят `BOT_TOKEN`; вызовы BFF — заголовки `X-TgTodo-Bot-Key` и `X-Telegram-User-Id`.
 
 ### 3.8. Частые ошибки
 
@@ -292,6 +307,7 @@ NuGet: `Telegram.Bot` (актуальная v21+).
 | Нет результатов | Бот должен ответить на **каждый** `inline_query` (хотя бы `[]`) |
 | Кнопки не работают | Обрабатывать `callback_query`; токен тот же |
 | «Добавить» создаёт задачу другому | Сверять `cq.From.Id` с `draft.TelegramUserId` |
+| «Черновик устарел» / нет черновика после редеплоя | Хранить черновики в BFF; TTL `DraftTtlMinutes`; не запускать два инстанса бота на один токен |
 | В группе видят все, а задача личная | В описании inline писать «Личная»; в групповом чате опционально second button «В общий список» |
 
 ---
@@ -319,11 +335,15 @@ NuGet: `Telegram.Bot` (актуальная v21+).
 
 | Компонент | Путь |
 |-----------|------|
-| Worker + handlers | `src/Bot/TgTodo.Bot/` |
+| Worker + Kestrel + handlers | `src/Bot/TgTodo.Bot/` (`Program.cs`, `BotUpdateHandler.cs`) |
+| Очередь RabbitMQ | `Services/RabbitMqTelegramUpdateIngress.cs`, гайд `docs/BOT-RABBITMQ.md` |
+| In-memory fallback | `Services/ChannelTelegramUpdateIngress.cs`, `UpdateIngestQueue.cs` |
+| Long polling (если не Webhook) | `Services/TelegramPollingWorker.cs` |
+| Старт: команды + set/delete webhook | `TelegramBotLifecycle.cs` |
 | BFF-клиент | `Services/BffClient.cs` |
-| Inline-черновики | `Services/InlineDraftStore.cs` |
+| Inline-черновики | BFF: `TgTodo.Bff/Services/BotInlineDraftStore.cs`, маршруты `/bff/internal/bot/drafts*` |
 | Docker | `docker/Dockerfile.bot`, сервис `bot` в `deploy/docker-compose.yml` |
-| Auth бота на BFF | заголовки `X-TgTodo-Bot-Key` + `X-Telegram-User-Id` (см. `TelegramAuthMiddleware`) |
+| Auth бота на BFF | для `/bff/*` (кроме internal drafts): `X-TgTodo-Bot-Key` + `X-Telegram-User-Id` + `X-Telegram-Display-Name` (см. `TelegramAuthMiddleware`) |
 
 ### Запуск
 
@@ -331,17 +351,31 @@ NuGet: `Telegram.Bot` (актуальная v21+).
 
 ```powershell
 # deploy/.env: BOT_TOKEN=..., BOT_INTERNAL_KEY=dev-bot-key
+# Webhook (опционально): BOT_DELIVERY_MODE=Webhook, BOT_WEBHOOK_PUBLIC_BASE_URL=https://..., BOT_WEBHOOK_SECRET_TOKEN=...
 cd deploy
 docker compose up -d --build bot
 ```
 
-**Локально:**
+**Локально (polling):**
 
 ```powershell
 $env:BOT_TOKEN = "your_token"
 $env:Bot__BffBaseUrl = "http://localhost:5000"
 dotnet run --project src/Bot/TgTodo.Bot
 ```
+
+**Локально (webhook через ngrok):**
+
+```powershell
+$env:BOT_TOKEN = "..."
+$env:Bot__DeliveryMode = "Webhook"
+$env:Bot__WebhookPublicBaseUrl = "https://xxxx.ngrok-free.app"
+$env:Bot__WebhookSecretToken = "random-long-secret"
+$env:ASPNETCORE_URLS = "http://localhost:8081"
+dotnet run --project src/Bot/TgTodo.Bot
+```
+
+Убедитесь, что ngrok пробрасывает на тот же порт и путь, что в `Bot:WebhookPath` (по умолчанию `/telegram/webhook`).
 
 В BotFather: `/setinline` → placeholder `Создать задачу…`
 

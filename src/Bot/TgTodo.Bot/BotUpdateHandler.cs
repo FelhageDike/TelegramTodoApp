@@ -7,6 +7,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InlineQueryResults;
 using Telegram.Bot.Types.ReplyMarkups;
 using TgTodo.Bot.Services;
+using TgTodo.Contracts.Bot;
 using TgTodo.Contracts.Enums;
 
 namespace TgTodo.Bot;
@@ -18,24 +19,33 @@ public sealed class BotUpdateHandler
     private readonly BotOptions _options;
     private readonly BffClient _bff;
     private readonly UserSessionStore _sessions;
-    private readonly InlineDraftStore _drafts;
     private readonly ILogger<BotUpdateHandler> _logger;
+    private readonly object _botUsernameLock = new();
+    private string? _cachedBotUsername;
 
     public BotUpdateHandler(
         IOptions<BotOptions> options,
         BffClient bff,
         UserSessionStore sessions,
-        InlineDraftStore drafts,
         ILogger<BotUpdateHandler> logger)
     {
         _options = options.Value;
         _bff = bff;
         _sessions = sessions;
-        _drafts = drafts;
         _logger = logger;
     }
 
-    public void CleanupDrafts() => _drafts.CleanupExpired();
+    public async Task CleanupDraftsAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _bff.PruneInlineDraftsAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Prune inline drafts failed");
+        }
+    }
 
     public async Task HandleAsync(ITelegramBotClient bot, Update update, CancellationToken ct)
     {
@@ -74,10 +84,7 @@ public sealed class BotUpdateHandler
                 return;
             }
 
-            await bot.SendMessage(chatId,
-                $"Группа «{group.Name}» создана.\nКод приглашения: `{group.InviteCode}`",
-                parseMode: ParseMode.Markdown,
-                cancellationToken: ct);
+            await SendGroupCreatedAsync(bot, chatId, group, ct);
             return;
         }
 
@@ -91,7 +98,7 @@ public sealed class BotUpdateHandler
         switch (command)
         {
             case "/start":
-                await SendWelcomeAsync(bot, chatId, ct);
+                await HandleStartAsync(bot, chatId, user, args, ct);
                 break;
             case "/app":
                 await bot.SendMessage(chatId, "Откройте приложение:", replyMarkup: AppKeyboard(), cancellationToken: ct);
@@ -116,9 +123,10 @@ public sealed class BotUpdateHandler
                 {
                     _sessions.ClearPending(user.Id);
                     var (group, error) = await _bff.CreateGroupAsync(user.Id, GetDisplayName(user), args, ct);
-                    await bot.SendMessage(chatId,
-                        group is null ? error ?? "Ошибка" : $"Группа «{group.Name}», код: {group.InviteCode}",
-                        cancellationToken: ct);
+                    if (group is null)
+                        await bot.SendMessage(chatId, error ?? "Ошибка", cancellationToken: ct);
+                    else
+                        await SendGroupCreatedAsync(bot, chatId, group, ct);
                 }
                 else
                 {
@@ -177,10 +185,20 @@ public sealed class BotUpdateHandler
         if (data.StartsWith("tadd:", StringComparison.Ordinal))
         {
             var draftId = data["tadd:".Length..];
-            var draft = _drafts.Get(draftId);
-            if (draft is null || draft.TelegramUserId != user.Id)
+            var draft = await _bff.GetInlineDraftAsync(draftId, ct);
+            if (draft is null)
             {
-                await bot.AnswerCallbackQuery(callback.Id, "Черновик устарел", showAlert: true, cancellationToken: ct);
+                await bot.AnswerCallbackQuery(callback.Id,
+                    "Черновик не найден или истёк. Снова введите @бот и текст задачи.",
+                    showAlert: true, cancellationToken: ct);
+                return;
+            }
+
+            if (draft.TelegramUserId != user.Id)
+            {
+                await bot.AnswerCallbackQuery(callback.Id,
+                    "Добавить может только тот, кто создал эту карточку.",
+                    showAlert: true, cancellationToken: ct);
                 return;
             }
 
@@ -192,7 +210,7 @@ public sealed class BotUpdateHandler
                 return;
             }
 
-            _drafts.Delete(draftId);
+            await _bff.DeleteInlineDraftAsync(draftId, ct);
             await bot.AnswerCallbackQuery(callback.Id, "Добавлено", cancellationToken: ct);
             if (chatId.HasValue && messageId.HasValue)
             {
@@ -206,7 +224,7 @@ public sealed class BotUpdateHandler
         if (data.StartsWith("tno:", StringComparison.Ordinal))
         {
             var draftId = data["tno:".Length..];
-            _drafts.Delete(draftId);
+            await _bff.DeleteInlineDraftAsync(draftId, ct);
             await bot.AnswerCallbackQuery(callback.Id, cancellationToken: ct);
             if (chatId.HasValue && messageId.HasValue)
             {
@@ -284,7 +302,7 @@ public sealed class BotUpdateHandler
         var startDate = DateOnly.FromDateTime(DateTime.UtcNow);
         var draftId = Guid.NewGuid().ToString("N")[..12];
 
-        var draft = new InlineTaskDraft
+        var draftDto = new InlineTaskDraftDto
         {
             Id = draftId,
             TelegramUserId = user.Id,
@@ -296,7 +314,24 @@ public sealed class BotUpdateHandler
             StartDate = startDate,
             ExpiresAt = DateTime.UtcNow.AddMinutes(_options.DraftTtlMinutes)
         };
-        _drafts.Save(draft);
+
+        try
+        {
+            await _bff.SaveInlineDraftAsync(draftDto, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save inline draft to BFF");
+            var err = new InlineQueryResultArticle(
+                "draft-err",
+                "Не удалось сохранить черновик",
+                new InputTextMessageContent("Проверьте связь с сервером и попробуйте снова."))
+            {
+                Description = "BFF недоступен или неверный ключ бота"
+            };
+            await bot.AnswerInlineQuery(inline.Id, new[] { err }, cacheTime: 0, isPersonal: true, cancellationToken: ct);
+            return;
+        }
 
         var messageText = $"📋 *Задача:* {EscapeMarkdown(parsed.Title)}";
         var result = new InlineQueryResultArticle(
@@ -344,11 +379,64 @@ public sealed class BotUpdateHandler
             "TgTodo — задачи и баллы для себя и семьи.\n\n" +
             "• Mini App — полный интерфейс\n" +
             "• В любом чате: `@бот название +10` — карточка с кнопками\n" +
-            "• /today — задачи на сегодня\n\n" +
+            "• /today — задачи на сегодня\n" +
+            "• Ссылка-приглашение в группу (из /groups) — вступление без команды /join\n\n" +
             "/help — все команды",
             parseMode: ParseMode.Markdown,
             replyMarkup: AppKeyboard(),
             cancellationToken: ct);
+    }
+
+    private async Task HandleStartAsync(ITelegramBotClient bot, long chatId, User user, string args, CancellationToken ct)
+    {
+        var payload = args.Trim();
+        if (payload.StartsWith("join_", StringComparison.OrdinalIgnoreCase))
+        {
+            var code = payload["join_".Length..].Trim();
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                await bot.SendMessage(chatId, "В ссылке нет кода. Попросите приглашение ещё раз или введите: /join КОД", cancellationToken: ct);
+                return;
+            }
+
+            var (joined, joinError) = await _bff.JoinGroupAsync(user.Id, GetDisplayName(user), code.ToUpperInvariant(), ct);
+            await bot.SendMessage(chatId,
+                joined is null ? joinError ?? "Не удалось вступить в группу" : $"Вы в группе «{joined.Name}»",
+                cancellationToken: ct);
+            return;
+        }
+
+        await SendWelcomeAsync(bot, chatId, ct);
+    }
+
+    private async Task SendGroupCreatedAsync(ITelegramBotClient bot, long chatId, GroupDto group, CancellationToken ct)
+    {
+        var username = await GetBotUsernameAsync(bot, ct);
+        var sb = new StringBuilder();
+        sb.AppendLine($"Группа «{group.Name}» создана.");
+        sb.AppendLine($"Код приглашения: `{group.InviteCode}`");
+        if (!string.IsNullOrEmpty(username))
+            sb.AppendLine($"Ссылка для вступления: https://t.me/{username}?start=join_{group.InviteCode}");
+
+        await bot.SendMessage(chatId, sb.ToString().TrimEnd(), parseMode: ParseMode.Markdown, cancellationToken: ct);
+    }
+
+    private async Task<string?> GetBotUsernameAsync(ITelegramBotClient bot, CancellationToken ct)
+    {
+        lock (_botUsernameLock)
+        {
+            if (!string.IsNullOrEmpty(_cachedBotUsername))
+                return _cachedBotUsername;
+        }
+
+        var me = await bot.GetMe(ct);
+        var u = me.Username ?? "";
+        lock (_botUsernameLock)
+        {
+            _cachedBotUsername = u;
+        }
+
+        return string.IsNullOrEmpty(u) ? null : u;
     }
 
     private async Task SendTodayAsync(ITelegramBotClient bot, long chatId, User user, UserSession session, CancellationToken ct)
@@ -448,6 +536,7 @@ public sealed class BotUpdateHandler
             return;
         }
 
+        var botUsername = await GetBotUsernameAsync(bot, ct);
         var sb = new StringBuilder("👥 *Группы*\n\n");
         var buttons = new List<List<InlineKeyboardButton>>
         {
@@ -462,6 +551,8 @@ public sealed class BotUpdateHandler
             {
                 var active = session.SelectedGroupId == g.Id ? " ✓" : "";
                 sb.AppendLine($"• {g.Name}{active} — код `{g.InviteCode}`");
+                if (!string.IsNullOrEmpty(botUsername))
+                    sb.AppendLine($"  приглашение: `https://t.me/{botUsername}?start=join_{g.InviteCode}`");
                 buttons.Add(new List<InlineKeyboardButton>
                 {
                     InlineKeyboardButton.WithCallbackData($"Контекст: {g.Name}", $"ctx:{g.Id}")
@@ -534,6 +625,7 @@ public sealed class BotUpdateHandler
         /groups — группы и контекст
         /newgroup — создать группу
         /join КОД — вступить
+        Ссылка `https://t.me/ИМЯ_БОТА?start=join_КОД` — то же, одним нажатием из чата
         /newtask текст — быстрая задача
         /context personal — личные задачи
 
