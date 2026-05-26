@@ -1,0 +1,133 @@
+@using System.Globalization
+@using TgTodo.MiniApp.Services
+@inject IJSRuntime JS
+
+<div class="month-kanban">
+    <div class="month-kanban__header">
+        <button type="button" class="month-kanban__nav" @onclick="PrevMonth" aria-label="Предыдущий месяц">
+            <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" />
+        </button>
+        <span class="month-kanban__title">@MonthTitle</span>
+        <button type="button" class="month-kanban__nav" @onclick="NextMonth" aria-label="Следующий месяц">
+            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" />
+        </button>
+    </div>
+
+    @if (Loading)
+    {
+        <div class="month-kanban__loader">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Small" />
+        </div>
+    }
+    else if (Days is null || Days.Count == 0)
+    {
+        <p class="empty-state">Нет задач в этом месяце</p>
+    }
+    else
+    {
+        <div class="kanban-board h-scroll">
+            @foreach (var day in Days)
+            {
+                var isToday = day.Date == Today;
+                var isSelected = day.Date == SelectedDate;
+                var active = day.Tasks.Count(t => !t.IsCompletedForPeriod);
+                <div class="kanban-col @(isSelected ? "kanban-col--selected" : "") @(isToday ? "kanban-col--today" : "")"
+                     data-day="@day.Date.Day">
+                    <button type="button" class="kanban-col__head" @onclick="() => OnDayClick.InvokeAsync(day.Date)">
+                        <span class="kanban-col__wd">@WeekdayLabel(day.Date)</span>
+                        <span class="kanban-col__num">@day.Date.Day</span>
+                        @if (day.Tasks.Count > 0)
+                        {
+                            <span class="kanban-col__count">@active/@day.Tasks.Count</span>
+                        }
+                    </button>
+                    <div class="kanban-col__cards">
+                        @foreach (var task in day.Tasks.OrderBy(t => t.IsCompletedForPeriod).ThenBy(t => t.Title))
+                        {
+                            <div class="kanban-card @(task.IsCompletedForPeriod ? "kanban-card--done" : "")" @onclick="() => OnDayClick.InvokeAsync(day.Date)">
+                                <span class="kanban-card__title">@task.Title</span>
+                                <span class="kanban-card__meta">+@task.PointsReward</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static CultureInfo Ru => AppCulture.Ru;
+
+    [Parameter] public int Year { get; set; }
+    [Parameter] public int Month { get; set; }
+    [Parameter] public DateOnly SelectedDate { get; set; }
+    [Parameter] public DateOnly Today { get; set; }
+    [Parameter] public IReadOnlyList<DayTasksDto>? Days { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public EventCallback<(int Year, int Month)> MonthChanged { get; set; }
+    [Parameter] public EventCallback<DateOnly> OnDayClick { get; set; }
+
+    private int _scrollToken;
+    private bool _wasLoading = true;
+    private int _lastYm;
+
+    private string MonthTitle => new DateOnly(Year, Month, 1).ToString("MMMM yyyy", Ru);
+
+    private static string WeekdayLabel(DateOnly date) =>
+        Ru.DateTimeFormat.GetAbbreviatedDayName(date.DayOfWeek).ToUpperInvariant();
+
+    protected override void OnParametersSet()
+    {
+        var ym = Year * 100 + Month;
+        if (Loading)
+        {
+            _wasLoading = true;
+            return;
+        }
+
+        if (_wasLoading || ym != _lastYm)
+        {
+            _wasLoading = false;
+            _lastYm = ym;
+            _scrollToken++;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Loading || Days is null || Days.Count == 0 || _scrollToken == 0)
+            return;
+
+        _scrollToken = 0;
+
+        var targetDay = Year == Today.Year && Month == Today.Month
+            ? Today.Day
+            : SelectedDate.Year == Year && SelectedDate.Month == Month
+                ? SelectedDate.Day
+                : 1;
+
+        try
+        {
+            await JS.InvokeVoidAsync("tgTodoUi.scrollKanbanToDay", targetDay);
+        }
+        catch
+        {
+            // ignore if JS not ready
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private async Task PrevMonth()
+    {
+        var d = new DateOnly(Year, Month, 1).AddMonths(-1);
+        await MonthChanged.InvokeAsync((d.Year, d.Month));
+    }
+
+    private async Task NextMonth()
+    {
+        var d = new DateOnly(Year, Month, 1).AddMonths(1);
+        await MonthChanged.InvokeAsync((d.Year, d.Month));
+    }
+}

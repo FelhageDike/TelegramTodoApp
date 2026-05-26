@@ -1,0 +1,275 @@
+@page "/"
+@inject BffApiClient Api
+@inject AppState AppState
+@inject UserTimeService UserTime
+@inject ToastService Toast
+@inject NavigationManager Nav
+
+<MudFab Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="home-fab" OnClick="@(() => Nav.NavigateTo($"/add?date={_selectedDate:yyyy-MM-dd}"))" />
+
+<ContextDock Groups="_home?.Groups"
+             SelectedGroupId="AppState.SelectedGroupId"
+             ActiveCount="ActiveTasksCount"
+             TotalCount="FilteredTasks.Count"
+             OnSelect="OnContextSelectAsync" />
+
+<WeekCalendar SelectedDate="_selectedDate" Today="_today" SelectedDateChanged="OnDateChanged" />
+
+<div class="home-view-tabs home-block">
+    <button type="button" class="view-tab @(_view == HomeView.Day ? "view-tab--active" : "")" @onclick="() => SetView(HomeView.Day)">День</button>
+    <button type="button" class="view-tab @(_view == HomeView.Month ? "view-tab--active" : "")" @onclick="() => SetView(HomeView.Month)">Канбан</button>
+</div>
+
+@if (_view == HomeView.Day)
+{
+    <div class="home-filters home-block filter-chips h-scroll">
+        <button type="button" class="filter-tab @(_filter == TaskFilter.All ? "filter-tab--active" : "")"
+                @onclick="() => SetFilter(TaskFilter.All)">Все (@CountFor(TaskFilter.All))</button>
+        <button type="button" class="filter-tab @(_filter == TaskFilter.Assignee ? "filter-tab--active" : "")"
+                @onclick="() => SetFilter(TaskFilter.Assignee)">Исполнитель (@CountFor(TaskFilter.Assignee))</button>
+        <button type="button" class="filter-tab @(_filter == TaskFilter.Creator ? "filter-tab--active" : "")"
+                @onclick="() => SetFilter(TaskFilter.Creator)">Создатель (@CountFor(TaskFilter.Creator))</button>
+    </div>
+
+    <div class="home-tasks home-block">
+        @if (_loading)
+        {
+            <div class="home-tasks__loader">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Small" />
+            </div>
+        }
+        else if (_home is null)
+        {
+            <MudAlert Severity="Severity.Warning">Не удалось загрузить данные</MudAlert>
+        }
+        else
+        {
+            <div class="section-title">
+                <span>@SectionTitle.ToUpper() (@FilteredTasks.Count)</span>
+                <MudIcon Icon="@Icons.Material.Filled.KeyboardArrowDown" Size="Size.Small" />
+            </div>
+
+            @if (FilteredTasks.Count == 0)
+            {
+                <p class="empty-state">@EmptyMessage</p>
+            }
+            else
+            {
+                @foreach (var task in SortedTasks)
+                {
+                    <div class="task-card @(task.IsCompletedForPeriod ? "task-card--done" : "")">
+                        <div class="task-card__body">
+                            <div class="task-card__text">
+                                <div class="task-card__title">@task.Title</div>
+                                <div class="task-card__meta">+@task.PointsReward · @(task.Scope == TaskScope.Group ? "общая" : "личная")</div>
+                            </div>
+                            @if (!task.IsCompletedForPeriod)
+                            {
+                                <button type="button" class="task-card__done" @onclick="() => CompleteAsync(task.Id)" title="Выполнить">
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Primary" />
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="task-card__badge">✓ Выполнено</span>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        }
+    </div>
+}
+else
+{
+    <MonthKanban Year="_kanbanYear"
+                 Month="_kanbanMonth"
+                 SelectedDate="_selectedDate"
+                 Today="_today"
+                 Days="_month?.Days"
+                 Loading="_monthLoading"
+                 MonthChanged="OnKanbanMonthChanged"
+                 OnDayClick="OnKanbanDayClick" />
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "date")]
+    public string? DateQuery { get; set; }
+
+    private HomeDto? _home;
+    private MonthTasksDto? _month;
+    private bool _loading = true;
+    private bool _monthLoading;
+    private DateOnly _selectedDate = DateOnly.FromDateTime(DateTime.UtcNow);
+    private DateOnly _today = DateOnly.FromDateTime(DateTime.UtcNow);
+    private int _kanbanYear;
+    private int _kanbanMonth;
+    private TaskFilter _filter = TaskFilter.All;
+    private HomeView _view = HomeView.Day;
+    private Guid? _currentUserId;
+
+    private string SectionTitle => _selectedDate == _today
+        ? "Сегодня"
+        : _selectedDate.ToString("d MMMM", AppCulture.Ru);
+
+    private string EmptyMessage => _selectedDate == _today
+        ? "На сегодня задач нет"
+        : "На этот день задач нет";
+
+    private IEnumerable<TaskDto> AllTasks => _home?.Tasks ?? [];
+
+    private List<TaskDto> FilteredTasks => ApplyFilter(AllTasks).ToList();
+
+    private List<TaskDto> SortedTasks => FilteredTasks
+        .OrderBy(t => t.IsCompletedForPeriod)
+        .ThenBy(t => t.Title, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private int ActiveTasksCount => FilteredTasks.Count(t => !t.IsCompletedForPeriod);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserTime.InitializeAsync();
+        _today = await UserTime.GetTodayAsync();
+        _selectedDate = _today;
+        ApplyDateQuery();
+        _kanbanYear = _selectedDate.Year;
+        _kanbanMonth = _selectedDate.Month;
+        await AppState.InitializeAsync();
+        AppState.OnChange += OnAppStateChanged;
+        UserTime.OnChanged += OnTimeZoneChanged;
+        await LoadAsync();
+    }
+
+    private async void OnTimeZoneChanged() => await InvokeAsync(async () =>
+    {
+        _today = await UserTime.GetTodayAsync();
+        StateHasChanged();
+    });
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var prev = _selectedDate;
+        ApplyDateQuery();
+        if (prev != _selectedDate)
+            await LoadAsync();
+    }
+
+    private void ApplyDateQuery()
+    {
+        if (!string.IsNullOrWhiteSpace(DateQuery) && DateOnly.TryParse(DateQuery, out var parsed))
+            _selectedDate = parsed;
+    }
+
+    private async void OnAppStateChanged() => await InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        if (_view == HomeView.Month)
+            await LoadMonthAsync();
+    });
+
+    private async Task OnDateChanged(DateOnly date)
+    {
+        _selectedDate = date;
+        _kanbanYear = date.Year;
+        _kanbanMonth = date.Month;
+        await LoadAsync();
+        if (_view == HomeView.Month)
+            await LoadMonthAsync();
+    }
+
+    private async Task OnContextSelectAsync((Guid? Id, string? Name) ctx)
+    {
+        await AppState.SelectGroupAsync(ctx.Id, ctx.Name);
+        await LoadAsync();
+        if (_view == HomeView.Month)
+            await LoadMonthAsync();
+    }
+
+    private async Task SetView(HomeView view)
+    {
+        _view = view;
+        if (view == HomeView.Month)
+            await LoadMonthAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnKanbanMonthChanged((int Year, int Month) ym)
+    {
+        _kanbanYear = ym.Year;
+        _kanbanMonth = ym.Month;
+        await LoadMonthAsync();
+    }
+
+    private async Task OnKanbanDayClick(DateOnly date)
+    {
+        _selectedDate = date;
+        _view = HomeView.Day;
+        await LoadAsync();
+    }
+
+    private void SetFilter(TaskFilter filter)
+    {
+        _filter = filter;
+        StateHasChanged();
+    }
+
+    private int CountFor(TaskFilter filter) => ApplyFilter(AllTasks, filter).Count();
+
+    private IEnumerable<TaskDto> ApplyFilter(IEnumerable<TaskDto> tasks, TaskFilter filter)
+    {
+        if (_currentUserId is null) return tasks;
+        return filter switch
+        {
+            TaskFilter.Assignee => tasks.Where(t => t.AssignedToUserId == _currentUserId),
+            TaskFilter.Creator => tasks.Where(t => t.CreatedByUserId == _currentUserId),
+            _ => tasks
+        };
+    }
+
+    private IEnumerable<TaskDto> ApplyFilter(IEnumerable<TaskDto> tasks) =>
+        ApplyFilter(tasks, _filter);
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _home = await Api.GetHomeAsync(AppState.SelectedGroupId, _selectedDate);
+        _currentUserId = _home?.UserId;
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadMonthAsync()
+    {
+        _monthLoading = true;
+        _month = await Api.GetMonthTasksAsync(AppState.SelectedGroupId, _kanbanYear, _kanbanMonth);
+        _monthLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task CompleteAsync(Guid taskId)
+    {
+        var result = await Api.CompleteTaskAsync(taskId, _selectedDate);
+        if (result is null)
+        {
+            Toast.Show("Не удалось отметить задачу", ToastType.Error);
+            return;
+        }
+        Toast.Show($"+{result.PointsReward} баллов", ToastType.Success);
+
+        if (_home is not null)
+        {
+            var idx = _home.Tasks.FindIndex(t => t.Id == taskId);
+            if (idx >= 0)
+                _home.Tasks[idx] = result;
+        }
+
+        if (_view == HomeView.Month)
+            await LoadMonthAsync();
+
+        StateHasChanged();
+    }
+
+    private enum TaskFilter { All, Assignee, Creator }
+    private enum HomeView { Day, Month }
+}

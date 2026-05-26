@@ -1,0 +1,28 @@
+@inject ToastService Toast
+@implements IDisposable
+
+<div class="tgtodo-toast-stack" aria-live="polite">
+    @foreach (var toast in Toast.Items)
+    {
+        <div class="tgtodo-toast tgtodo-toast--@KindClass(toast.Type)" @key="toast.Id">
+            <span class="tgtodo-toast__accent" aria-hidden="true"></span>
+            <span class="tgtodo-toast__text">@toast.Message</span>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => Toast.Changed += OnToastChanged;
+
+    private void OnToastChanged() => InvokeAsync(StateHasChanged);
+
+    private static string KindClass(ToastType type) => type switch
+    {
+        ToastType.Success => "success",
+        ToastType.Warning => "warning",
+        ToastType.Error => "error",
+        _ => "info"
+    };
+
+    public void Dispose() => Toast.Changed -= OnToastChanged;
+}

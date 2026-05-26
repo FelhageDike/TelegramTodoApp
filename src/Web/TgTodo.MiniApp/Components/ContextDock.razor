@@ -1,0 +1,84 @@
+@inject TelegramInterop Telegram
+
+<header class="context-dock home-block">
+    <div class="context-dock__chips h-scroll">
+        <button type="button"
+                class="context-chip @(IsPersonal ? "context-chip--active" : "")"
+                @onclick="() => SelectAsync(null, null)">
+            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="context-chip__icon" />
+            <span class="context-chip__label">Личные</span>
+            @if (IsPersonal && TotalCount > 0)
+            {
+                <span class="context-chip__badge">@ActiveCount/@TotalCount</span>
+            }
+        </button>
+
+        @if (Groups is not null)
+        {
+            @foreach (var g in Groups)
+            {
+                var active = SelectedGroupId == g.Id;
+                <button type="button"
+                        class="context-chip @(active ? "context-chip--active" : "")"
+                        @onclick="() => SelectAsync(g.Id, g.Name)">
+                    <MudIcon Icon="@Icons.Material.Filled.Group" Size="Size.Small" Class="context-chip__icon" />
+                    <span class="context-chip__label">@g.Name</span>
+                    @if (active && TotalCount > 0)
+                    {
+                        <span class="context-chip__badge">@ActiveCount/@TotalCount</span>
+                    }
+                </button>
+            }
+        }
+    </div>
+
+    <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Class="context-dock__menu">
+        <ActivatorContent>
+            <button type="button" class="context-avatar" title="@(_user?.DisplayName ?? "Профиль")">
+                @if (!string.IsNullOrEmpty(_user?.PhotoUrl))
+                {
+                    <img src="@_user.PhotoUrl" alt="" class="context-avatar__img" />
+                }
+                else
+                {
+                    <span class="context-avatar__initials">@(_user?.Initials ?? "?")</span>
+                }
+            </button>
+        </ActivatorContent>
+        <ChildContent>
+            @if (_user is not null)
+            {
+                <div class="context-menu-user px-3 py-2">
+                    <div class="context-menu-user__name">@_user.DisplayName</div>
+                    @if (!string.IsNullOrEmpty(_user.Username))
+                    {
+                        <div class="context-menu-user__handle">@@@_user.Username</div>
+                    }
+                </div>
+                <MudDivider />
+            }
+            <MudMenuItem Href="/settings" Icon="@Icons.Material.Outlined.Settings">Настройки</MudMenuItem>
+            <MudMenuItem Href="/balance" Icon="@Icons.Material.Outlined.AccountBalanceWallet">Баланс</MudMenuItem>
+            <MudMenuItem Href="/groups" Icon="@Icons.Material.Outlined.Groups">Группы</MudMenuItem>
+        </ChildContent>
+    </MudMenu>
+</header>
+
+@code {
+    [Parameter] public IReadOnlyList<GroupDto>? Groups { get; set; }
+    [Parameter] public Guid? SelectedGroupId { get; set; }
+    [Parameter] public int ActiveCount { get; set; }
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public EventCallback<(Guid? Id, string? Name)> OnSelect { get; set; }
+
+    private TelegramUserInfo? _user;
+    private bool IsPersonal => SelectedGroupId is null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await Telegram.GetUserAsync();
+    }
+
+    private async Task SelectAsync(Guid? id, string? name) =>
+        await OnSelect.InvokeAsync((id, name));
+}

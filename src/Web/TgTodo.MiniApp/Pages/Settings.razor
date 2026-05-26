@@ -1,0 +1,115 @@
+@page "/settings"
+@inject ThemeService Theme
+@inject UserTimeService UserTime
+@inject ToastService Toast
+
+<MudText Typo="Typo.h6" Class="mb-3" Style="font-weight: 600;">Настройки</MudText>
+
+<MudPaper Elevation="0" Class="pa-4 mb-3 settings-card">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Тема</MudText>
+    <MudSelect T="AppThemeMode" Label="Режим" Value="_themeMode" ValueChanged="OnThemeModeChanged" Class="mb-2">
+        <MudSelectItem Value="AppThemeMode.System">Как в Telegram</MudSelectItem>
+        <MudSelectItem Value="AppThemeMode.Light">Светлая</MudSelectItem>
+        <MudSelectItem Value="AppThemeMode.Dark">Тёмная</MudSelectItem>
+    </MudSelect>
+    <MudSwitch T="bool" Label="Цвет кнопок из Telegram" Value="_useTelegramColors"
+               ValueChanged="OnTelegramColorsChanged" Disabled="@(_themeMode != AppThemeMode.System)" />
+</MudPaper>
+
+<MudPaper Elevation="0" Class="pa-4 mb-3 settings-card">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Часовой пояс</MudText>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+        Для «сегодня», календаря и даты создания задач. Сейчас: @_effectiveTimeZone
+    </MudText>
+    <MudSelect T="string" Label="Часовой пояс" Value="_timeZoneId" ValueChanged="OnTimeZoneChanged">
+        @foreach (var tz in UserTimeService.TimeZoneOptions)
+        {
+            <MudSelectItem T="string" Value="@tz.Id">@tz.Label</MudSelectItem>
+        }
+    </MudSelect>
+</MudPaper>
+
+<MudPaper Elevation="0" Class="pa-4 mb-3 settings-card">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Основной цвет</MudText>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
+        Календарь, фильтры и акценты. Сохраняется автоматически.
+    </MudText>
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+        @foreach (var preset in ThemeService.Presets)
+        {
+            var active = Theme.PrimaryColor.Equals(preset.Hex, StringComparison.OrdinalIgnoreCase);
+            <MudIconButton Icon="@Icons.Material.Filled.Circle"
+                           Style="@($"color: {preset.Hex}; width: 48px; height: 48px;")"
+                           OnClick="() => PickColorAsync(preset.Hex)"
+                           Variant="@(active ? Variant.Filled : Variant.Outlined)" />
+        }
+    </MudStack>
+</MudPaper>
+
+<MudPaper Elevation="0" Class="pa-2 mb-3 settings-card">
+    <MudNavMenu>
+        <MudNavLink Href="/balance" Icon="@Icons.Material.Filled.Star">Баланс и история</MudNavLink>
+        <MudNavLink Href="/groups" Icon="@Icons.Material.Filled.Groups">Группы</MudNavLink>
+        <MudNavLink Href="/add" Icon="@Icons.Material.Filled.AddTask">Новая задача</MudNavLink>
+    </MudNavMenu>
+</MudPaper>
+
+@code {
+    private AppThemeMode _themeMode = AppThemeMode.System;
+    private bool _useTelegramColors = true;
+    private string _timeZoneId = string.Empty;
+    private string _effectiveTimeZone = "…";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Theme.InitializeAsync();
+        await UserTime.InitializeAsync();
+        _themeMode = Theme.ThemeMode;
+        _useTelegramColors = Theme.UseTelegramColors;
+        _timeZoneId = UserTime.TimeZoneId ?? string.Empty;
+        _effectiveTimeZone = await UserTime.GetEffectiveTimeZoneLabelAsync();
+        Theme.OnChanged += OnThemeUpdated;
+        UserTime.OnChanged += OnTimeUpdated;
+    }
+
+    private void OnThemeUpdated()
+    {
+        _themeMode = Theme.ThemeMode;
+        _useTelegramColors = Theme.UseTelegramColors;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async void OnTimeUpdated() => await InvokeAsync(async () =>
+    {
+        _timeZoneId = UserTime.TimeZoneId ?? string.Empty;
+        _effectiveTimeZone = await UserTime.GetEffectiveTimeZoneLabelAsync();
+        StateHasChanged();
+    });
+
+    private async Task OnThemeModeChanged(AppThemeMode mode)
+    {
+        _themeMode = mode;
+        await Theme.SetThemeModeAsync(mode);
+    }
+
+    private async Task OnTelegramColorsChanged(bool value)
+    {
+        _useTelegramColors = value;
+        await Theme.SetUseTelegramColorsAsync(value);
+    }
+
+    private async Task OnTimeZoneChanged(string timeZoneId)
+    {
+        _timeZoneId = timeZoneId ?? string.Empty;
+        await UserTime.SetTimeZoneAsync(string.IsNullOrWhiteSpace(_timeZoneId) ? null : _timeZoneId);
+        _effectiveTimeZone = await UserTime.GetEffectiveTimeZoneLabelAsync();
+        Toast.Show("Часовой пояс сохранён", ToastType.Success);
+    }
+
+    private async Task PickColorAsync(string hex)
+    {
+        await Theme.SetPrimaryColorAsync(hex);
+        _useTelegramColors = false;
+        Toast.Show("Цвет акцента сохранён", ToastType.Success);
+    }
+}

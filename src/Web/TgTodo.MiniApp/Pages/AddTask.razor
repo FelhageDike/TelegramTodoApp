@@ -1,0 +1,204 @@
+@page "/add"
+@inject BffApiClient Api
+@inject AppState AppState
+@inject UserTimeService UserTime
+@inject ToastService Toast
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h6" Class="page-title">Новая задача</MudText>
+
+<MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+    @if (IsPersonalContext)
+    {
+        <span>Личная задача</span>
+    }
+    else
+    {
+        <span>Группа: @AppState.SelectedGroupName</span>
+    }
+</MudAlert>
+
+<MudTextField @bind-Value="_title" Label="Название" Required="true" Class="mb-2" />
+<MudNumericField @bind-Value="_points" Label="Баллы за выполнение" Min="1" Max="1000" Class="mb-2" />
+
+<MudDatePicker Date="_startDate"
+               DateChanged="OnStartDateChanged"
+               Label="Дата"
+               DateFormat="dd.MM.yyyy"
+               OpenTo="OpenTo.Date"
+               Class="mb-2" />
+
+<MudSelect T="RecurrenceType" Label="Повторение" @bind-Value="_recurrence" Class="mb-2">
+    <MudSelectItem Value="RecurrenceType.None">Без повтора (один раз)</MudSelectItem>
+    <MudSelectItem Value="RecurrenceType.Daily">Каждый день</MudSelectItem>
+    <MudSelectItem Value="RecurrenceType.Weekly">Раз в неделю</MudSelectItem>
+    <MudSelectItem Value="RecurrenceType.Monthly">Раз в месяц</MudSelectItem>
+    <MudSelectItem Value="RecurrenceType.EveryNDays">Каждые N дней</MudSelectItem>
+</MudSelect>
+
+@if (_recurrence == RecurrenceType.Weekly)
+{
+    <MudSelect T="int" Label="День недели" @bind-Value="_weekday" Class="mb-2">
+        @foreach (var d in Weekdays)
+        {
+            <MudSelectItem T="int" Value="@d.Value">@d.Label</MudSelectItem>
+        }
+    </MudSelect>
+}
+
+@if (_recurrence == RecurrenceType.Monthly)
+{
+    <MudSelect T="string" Label="Число месяца" @bind-Value="_dayOfMonthStr" Class="mb-2">
+        @foreach (var d in MonthDayOptions)
+        {
+            <MudSelectItem T="string" Value="@d.ToString()">@d</MudSelectItem>
+        }
+    </MudSelect>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+        Если в месяце нет такого числа (например 31), задача появится в последний день месяца.
+    </MudText>
+}
+
+@if (_recurrence == RecurrenceType.EveryNDays)
+{
+    <MudNumericField @bind-Value="_intervalDays" Label="Интервал (дней)" Min="1" Max="365" Class="mb-2" />
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+        Отсчёт от выбранной даты. Например, «3» — каждые 3 дня начиная с неё.
+    </MudText>
+}
+
+@if (_recurrence == RecurrenceType.Daily)
+{
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+        Ежедневно начиная с выбранной даты.
+    </MudText>
+}
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="_saving" FullWidth="true">
+    Создать
+</MudButton>
+
+@code {
+    [SupplyParameterFromQuery(Name = "date")]
+    public string? DateQuery { get; set; }
+
+    private static readonly (int Value, string Label)[] Weekdays =
+    [
+        (1, "Понедельник"),
+        (2, "Вторник"),
+        (3, "Среда"),
+        (4, "Четверг"),
+        (5, "Пятница"),
+        (6, "Суббота"),
+        (0, "Воскресенье"),
+    ];
+
+    private static readonly int[] MonthDayOptions = Enumerable.Range(1, 31).ToArray();
+
+    private bool IsPersonalContext => AppState.SelectedGroupId is null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AppState.InitializeAsync();
+        await UserTime.InitializeAsync();
+
+        var today = await UserTime.GetTodayDateTimeAsync();
+        var initial = today;
+        if (!string.IsNullOrWhiteSpace(DateQuery) && DateOnly.TryParse(DateQuery, out var parsed))
+            initial = parsed.ToDateTime(TimeOnly.MinValue);
+
+        _startDate = initial;
+        SyncRecurrenceFromDate(initial);
+    }
+
+    private string _title = string.Empty;
+    private int _points = 10;
+    private RecurrenceType _recurrence = RecurrenceType.None;
+    private int _weekday;
+    private string _dayOfMonthStr = "1";
+    private int _intervalDays = 3;
+    private DateTime? _startDate;
+    private bool _saving;
+
+    private void OnStartDateChanged(DateTime? date)
+    {
+        if (date is null) return;
+        _startDate = date;
+        SyncRecurrenceFromDate(date.Value);
+    }
+
+    private void SyncRecurrenceFromDate(DateTime date)
+    {
+        _weekday = (int)date.DayOfWeek;
+        _dayOfMonthStr = date.Day.ToString();
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_title))
+        {
+            Toast.Show("Введите название задачи", ToastType.Warning);
+            return;
+        }
+
+        if (_startDate is null)
+        {
+            Toast.Show("Выберите дату", ToastType.Warning);
+            return;
+        }
+
+        if (!IsPersonalContext && AppState.SelectedGroupId is null)
+        {
+            Toast.Show("Выберите группу на главном экране", ToastType.Warning);
+            return;
+        }
+
+        if (_recurrence == RecurrenceType.Weekly && Weekdays.All(w => w.Value != _weekday))
+        {
+            Toast.Show("Выберите день недели", ToastType.Warning);
+            return;
+        }
+
+        int? dayOfMonth = null;
+        if (_recurrence == RecurrenceType.Monthly)
+        {
+            if (!int.TryParse(_dayOfMonthStr, out var dom) || dom is < 1 or > 31)
+            {
+                Toast.Show("Выберите число месяца от 1 до 31", ToastType.Warning);
+                return;
+            }
+            dayOfMonth = dom;
+        }
+
+        _saving = true;
+        var startDate = DateOnly.FromDateTime(_startDate.Value);
+
+        var body = new
+        {
+            Scope = IsPersonalContext ? TaskScope.Personal : TaskScope.Group,
+            Title = _title.Trim(),
+            PointsReward = _points,
+            Recurrence = _recurrence,
+            Weekday = _recurrence == RecurrenceType.Weekly ? _weekday : (int?)null,
+            DayOfMonth = dayOfMonth,
+            IntervalDays = _recurrence == RecurrenceType.EveryNDays ? _intervalDays : (int?)null,
+            PersonalVisibility = PersonalTaskVisibility.Private,
+            CompletionMode = CompletionMode.AnyMember,
+            GroupId = IsPersonalContext ? null : AppState.SelectedGroupId,
+            VisibilityGroupId = (Guid?)null,
+            StartDate = startDate.ToString("yyyy-MM-dd")
+        };
+
+        var (task, error) = await Api.CreateTaskAsync(body);
+        _saving = false;
+
+        if (task is null)
+        {
+            Toast.Show(error ?? "Ошибка создания задачи", ToastType.Error);
+            return;
+        }
+
+        Toast.Show("Задача создана", ToastType.Success);
+        Nav.NavigateTo($"/?date={startDate:yyyy-MM-dd}");
+    }
+}

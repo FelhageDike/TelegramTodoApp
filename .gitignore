@@ -1,0 +1,16 @@
+bin/
+obj/
+**/bin/
+**/obj/
+.vs/
+*.user
+.env
+**/.env
+deploy/.env
+*.db
+*.log
+.DS_Store
+.idea/
+_pub_test/
+_pubtest/
+**/wwwroot/_framework/

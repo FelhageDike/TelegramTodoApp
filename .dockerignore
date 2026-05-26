@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.git/
+**/agent-tools/
+**/.cursor/
+*.md
+!README.md

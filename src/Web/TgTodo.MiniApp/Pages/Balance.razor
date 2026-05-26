@@ -1,0 +1,146 @@
+@page "/balance"
+@inject BffApiClient Api
+@inject AppState AppState
+@inject UserTimeService UserTime
+@implements IDisposable
+@using System.Globalization
+
+<div class="balance-page">
+    <h1 class="page-title balance-page__title">Баланс</h1>
+    @if (!string.IsNullOrEmpty(AppState.SelectedGroupName))
+    {
+        <p class="balance-page__context">Группа «@AppState.SelectedGroupName»</p>
+    }
+    else
+    {
+        <p class="balance-page__context">Личный счёт</p>
+    }
+
+    @if (_loading)
+    {
+        <div class="balance-page__loader">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Small" />
+        </div>
+    }
+    else
+    {
+        @if (_balance is not null)
+        {
+            <div class="balance-stats">
+                <div class="balance-stat">
+                    <span class="balance-stat__label">Личный</span>
+                    <span class="balance-stat__value">@_balance.PersonalBalance</span>
+                </div>
+                @if (_balance.GroupBalance.HasValue)
+                {
+                    <div class="balance-stat">
+                        <span class="balance-stat__label">Группа</span>
+                        <span class="balance-stat__value">@_balance.GroupBalance</span>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="section-title balance-page__section">ИСТОРИЯ</div>
+
+        @if (_ledgerError is not null)
+        {
+            <p class="balance-page__hint balance-page__hint--warn">@_ledgerError</p>
+        }
+        else if (_ledger.Count == 0)
+        {
+            <p class="empty-state balance-page__empty">Пока нет операций</p>
+        }
+        else
+        {
+            <div class="ledger-list">
+                @foreach (var entry in _ledger)
+                {
+                    var positive = entry.Delta >= 0;
+                    <div class="ledger-item">
+                        <div class="ledger-item__body">
+                            <div class="ledger-item__text">
+                                <div class="ledger-item__title">@FormatReason(entry.Reason)</div>
+                                <div class="ledger-item__meta">@FormatWhen(entry.CreatedAt)</div>
+                            </div>
+                            <span class="ledger-item__delta @(positive ? "ledger-item__delta--plus" : "ledger-item__delta--minus")">
+                                @(positive ? "+" : "")@entry.Delta
+                            </span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
+
+    private BalanceDto? _balance;
+    private List<LedgerEntryDto> _ledger = [];
+    private string? _ledgerError;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserTime.InitializeAsync();
+        AppState.OnChange += OnContextChanged;
+        await LoadAsync();
+    }
+
+    private void OnContextChanged() => _ = InvokeAsync(LoadAsync);
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _ledgerError = null;
+        StateHasChanged();
+
+        _balance = await Api.GetBalanceAsync(AppState.SelectedGroupId);
+        var ledger = await Api.GetLedgerAsync(AppState.SelectedGroupId);
+        _ledger = ledger ?? [];
+        if (ledger is null)
+            _ledgerError = "Не удалось загрузить историю";
+
+        _loading = false;
+    }
+
+    private static string FormatReason(string reason) => reason switch
+    {
+        "task_complete" => "Задача выполнена",
+        _ => reason.Replace('_', ' ')
+    };
+
+    private string FormatWhen(DateTime utc)
+    {
+        var local = ToUserLocal(utc);
+        var today = DateTime.Today;
+        if (local.Date == today)
+            return $"Сегодня, {local:HH:mm}";
+        if (local.Date == today.AddDays(-1))
+            return $"Вчера, {local:HH:mm}";
+        return local.ToString("d MMM, HH:mm", Ru);
+    }
+
+    private DateTime ToUserLocal(DateTime utc)
+    {
+        var dt = DateTime.SpecifyKind(utc, DateTimeKind.Utc);
+        if (!string.IsNullOrEmpty(UserTime.TimeZoneId))
+        {
+            try
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(UserTime.TimeZoneId);
+                return TimeZoneInfo.ConvertTimeFromUtc(dt, tz);
+            }
+            catch
+            {
+                // fallback
+            }
+        }
+
+        return dt.ToLocalTime();
+    }
+
+    public void Dispose() => AppState.OnChange -= OnContextChanged;
+}

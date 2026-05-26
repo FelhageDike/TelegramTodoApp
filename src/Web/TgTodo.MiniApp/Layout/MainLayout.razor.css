@@ -1,0 +1,48 @@
+.app-shell {
+    min-height: 100vh;
+    background: var(--tgtodo-bg);
+    display: block;
+}
+
+.app-main {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px 16px 100px;
+    box-sizing: border-box;
+}
+
+::deep .home-block {
+    margin-bottom: 12px;
+}
+
+::deep .home-calendar {
+    min-height: 58px;
+}
+
+::deep .home-filters {
+    min-height: 36px;
+}
+
+::deep .home-tasks {
+    min-height: 160px;
+}
+
+::deep .week-calendar-strip {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+}
+
+::deep .week-calendar-strip::-webkit-scrollbar {
+    display: none;
+}
+
+::deep .filter-chips {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+}
+
+::deep .filter-chips .mud-chip {
+    flex-shrink: 0;
+}

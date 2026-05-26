@@ -1,0 +1,208 @@
+@using System.Globalization
+@using TgTodo.MiniApp.Services
+@inject IJSRuntime JS
+
+<div class="home-calendar home-block">
+    <div class="week-calendar-row">
+        <div class="week-calendar-strip h-scroll">
+            @foreach (var day in _days)
+            {
+                var isSelected = day.Date == SelectedDate;
+                var isToday = day.Date == Today;
+                <div role="button"
+                     tabindex="0"
+                     class="cal-day @(isSelected ? "cal-day--selected" : "") @(isToday && !isSelected ? "cal-day--today" : "")"
+                     data-date="@day.Date.ToString("yyyy-MM-dd")"
+                     @onclick="() => SelectDay(day.Date)"
+                     @onkeydown="(e) => OnDayKey(e, day.Date)">
+                    <span class="cal-day__wd">@day.Weekday</span>
+                    <span class="cal-day__num">@day.Date.Day</span>
+                </div>
+            }
+        </div>
+        <button type="button" class="cal-picker-btn" title="Выбрать дату" @onclick="OpenPicker">
+            <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" />
+        </button>
+    </div>
+</div>
+
+@if (_pickerOpen)
+{
+    <div class="cal-popover-backdrop" @onclick="ClosePicker"></div>
+    <div class="cal-popover" @onclick:stopPropagation="true">
+        <div class="cal-popover__head">
+            <button type="button" class="cal-popover__nav" @onclick="PickerPrevMonth" aria-label="Назад">‹</button>
+            <span class="cal-popover__title">@PickerMonthTitle</span>
+            <button type="button" class="cal-popover__nav" @onclick="PickerNextMonth" aria-label="Вперёд">›</button>
+        </div>
+        <div class="cal-popover__weekdays">
+            @foreach (var wd in WeekdayHeaders)
+            {
+                <span>@wd</span>
+            }
+        </div>
+        <div class="cal-popover__grid">
+            @foreach (var cell in _pickerCells)
+            {
+                if (cell.Date is null)
+                {
+                    <span class="cal-popover__empty"></span>
+                }
+                else
+                {
+                    var d = cell.Date.Value;
+                    var isSelected = d == SelectedDate;
+                    var isToday = d == Today;
+                    <button type="button"
+                            class="cal-popover__day @(isSelected ? "cal-popover__day--selected" : "") @(isToday ? "cal-popover__day--today" : "")"
+                            @onclick="() => PickDate(d)">
+                        @d.Day
+                    </button>
+                }
+            }
+        </div>
+        <button type="button" class="cal-popover__today" @onclick="PickToday">Сегодня</button>
+    </div>
+}
+
+@code {
+    private const int RangeDays = 45;
+
+    private static CultureInfo Ru => AppCulture.Ru;
+    private static readonly string[] WeekdayHeaders = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"];
+
+    [Parameter] public DateOnly SelectedDate { get; set; }
+    [Parameter] public DateOnly Today { get; set; }
+    [Parameter] public EventCallback<DateOnly> SelectedDateChanged { get; set; }
+
+    private readonly List<DayItem> _days = [];
+    private readonly List<PickerCell> _pickerCells = [];
+    private bool _pickerOpen;
+    private int _pickerYear;
+    private int _pickerMonth;
+    private string? _lastScrollKey;
+
+    private string PickerMonthTitle => new DateOnly(_pickerYear, _pickerMonth, 1).ToString("MMMM yyyy", Ru);
+
+    protected override void OnParametersSet()
+    {
+        if (SelectedDate == default)
+            return;
+        BuildDays();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var key = SelectedDate.ToString("yyyy-MM-dd");
+        if (_lastScrollKey == key && !firstRender)
+            return;
+
+        _lastScrollKey = key;
+        try
+        {
+            await JS.InvokeVoidAsync("tgTodoUi.initHorizontalScroll");
+            await JS.InvokeVoidAsync("tgTodoUi.scrollCalDayIntoView", key);
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private void BuildDays()
+    {
+        _days.Clear();
+        var anchor = SelectedDate == default
+            ? (Today == default ? DateOnly.FromDateTime(DateTime.UtcNow) : Today)
+            : SelectedDate;
+
+        var start = SafeAddDays(anchor, -RangeDays);
+        var end = SafeAddDays(anchor, RangeDays);
+        for (var date = start; date <= end; date = date.AddDays(1))
+        {
+            var weekday = Ru.DateTimeFormat.GetAbbreviatedDayName(date.DayOfWeek).ToUpperInvariant();
+            _days.Add(new DayItem(date, weekday));
+        }
+    }
+
+    private static DateOnly SafeAddDays(DateOnly date, int days)
+    {
+        try
+        {
+            return date.AddDays(days);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return days < 0 ? DateOnly.MinValue : DateOnly.MaxValue;
+        }
+    }
+
+    private void BuildPickerGrid()
+    {
+        _pickerCells.Clear();
+        var first = new DateOnly(_pickerYear, _pickerMonth, 1);
+        var daysInMonth = DateTime.DaysInMonth(_pickerYear, _pickerMonth);
+        var offset = ((int)first.DayOfWeek + 6) % 7;
+
+        for (var i = 0; i < offset; i++)
+            _pickerCells.Add(new PickerCell(null));
+
+        for (var d = 1; d <= daysInMonth; d++)
+            _pickerCells.Add(new PickerCell(new DateOnly(_pickerYear, _pickerMonth, d)));
+    }
+
+    private async Task SelectDay(DateOnly date)
+    {
+        SelectedDate = date;
+        BuildDays();
+        _lastScrollKey = null;
+        await SelectedDateChanged.InvokeAsync(date);
+    }
+
+    private async Task OnDayKey(KeyboardEventArgs e, DateOnly date)
+    {
+        if (e.Key is "Enter" or " ")
+            await SelectDay(date);
+    }
+
+    private void OpenPicker()
+    {
+        _pickerYear = SelectedDate.Year;
+        _pickerMonth = SelectedDate.Month;
+        BuildPickerGrid();
+        _pickerOpen = true;
+    }
+
+    private void ClosePicker() => _pickerOpen = false;
+
+    private void PickerPrevMonth()
+    {
+        var d = new DateOnly(_pickerYear, _pickerMonth, 1).AddMonths(-1);
+        _pickerYear = d.Year;
+        _pickerMonth = d.Month;
+        BuildPickerGrid();
+    }
+
+    private void PickerNextMonth()
+    {
+        var d = new DateOnly(_pickerYear, _pickerMonth, 1).AddMonths(1);
+        _pickerYear = d.Year;
+        _pickerMonth = d.Month;
+        BuildPickerGrid();
+    }
+
+    private async Task PickDate(DateOnly date)
+    {
+        _pickerOpen = false;
+        await SelectDay(date);
+    }
+
+    private async Task PickToday()
+    {
+        _pickerOpen = false;
+        await SelectDay(Today);
+    }
+
+    private record DayItem(DateOnly Date, string Weekday);
+    private record PickerCell(DateOnly? Date);
+}

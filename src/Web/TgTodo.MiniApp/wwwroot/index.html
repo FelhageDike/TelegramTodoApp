@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <title>TgTodo</title>
+    <base href="/" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <link href="TgTodo.MiniApp.styles.css" rel="stylesheet" />
+    <script src="js/userSettings.js"></script>
+    <script src="js/themeStorage.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/time.js"></script>
+    <script>
+        (function () {
+            var href = new URL('css/app.css?v=18', document.baseURI).href;
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = href;
+            document.head.appendChild(link);
+        })();
+    </script>
+    <style id="tgtodo-critical">
+        :root{--tgtodo-primary:#5B7FFF;--tgtodo-bg:#F3F4F8;--tgtodo-surface:#fff;--tgtodo-text:#1e293b;--tgtodo-text-muted:#94a3b8}
+        html,body{margin:0;background:var(--tgtodo-bg)!important;font-family:Inter,Roboto,sans-serif;color:var(--tgtodo-text)}
+        #app,.app-shell,.app-main,.mud-layout{background:var(--tgtodo-bg)!important;min-height:100vh}
+        .app-main{max-width:480px;margin:0 auto;padding:16px 16px 100px;box-sizing:border-box}
+        .floating-nav-wrap{position:fixed;left:0;right:0;bottom:max(22px,env(safe-area-inset-bottom,0px) + 14px);z-index:2000;display:flex;justify-content:center;pointer-events:none;padding:0 24px}
+        .floating-nav-pill{pointer-events:auto;display:inline-flex!important;width:auto!important;align-items:center;gap:8px;background:var(--tgtodo-surface);border-radius:9999px;padding:8px 20px;box-shadow:0 10px 40px rgba(15,23,42,.14)}
+        a.fn-item{display:flex;flex-direction:column;align-items:center;text-decoration:none;color:var(--tgtodo-text-muted);padding:4px 10px}
+        .fn-icon-box{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+        a.fn-item--active .fn-icon-box{background:var(--tgtodo-primary);color:#fff}
+        .h-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain}
+        .week-calendar-strip,.filter-chips,.context-dock__chips{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;gap:6px}
+        .cal-day{display:flex;flex-direction:column;align-items:center;flex-shrink:0;min-width:44px;height:52px;border:none;border-radius:14px;background:var(--tgtodo-surface)!important;font-family:inherit;color:var(--tgtodo-text-muted)}
+        .cal-day--selected{background:var(--tgtodo-primary)!important;color:#fff!important}
+        .filter-tab{flex-shrink:0;border:none;border-radius:999px;padding:8px 14px;background:var(--tgtodo-surface);font-family:inherit;color:var(--tgtodo-text-muted)}
+        .filter-tab--active{background:var(--tgtodo-primary)!important;color:#fff!important}
+    </style>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        (function () {
+            function boot() {
+                if (window.tgTodoTheme?.bootstrap) {
+                    window.tgTodoTheme.bootstrap();
+                }
+            }
+            boot();
+            document.addEventListener('DOMContentLoaded', boot);
+            var tg = window.Telegram?.WebApp;
+            if (tg?.onEvent) {
+                tg.onEvent('themeChanged', boot);
+            }
+        })();
+    </script>
+</head>
+
+<body>
+    <div id="app">
+        <div class="loading-container" style="display:flex;justify-content:center;align-items:center;height:100vh">
+            <p>Загрузка TgTodo...</p>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        Произошла ошибка.
+        <a href="" class="reload">Обновить</a>
+    </div>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="js/telegram.js"></script>
+    <script src="js/appState.js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        (function () {
+            var ui = document.getElementById('blazor-error-ui');
+            if (!ui) return;
+            window.addEventListener('error', function (e) {
+                console.error('[TgTodo]', e.error || e.message);
+            });
+            window.addEventListener('unhandledrejection', function (e) {
+                console.error('[TgTodo] unhandled promise', e.reason);
+            });
+        })();
+    </script>
+</body>
+
+</html>

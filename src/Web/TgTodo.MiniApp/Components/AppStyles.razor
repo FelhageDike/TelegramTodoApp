@@ -1,0 +1,33 @@
+@inject HttpClient Http
+
+@if (!string.IsNullOrEmpty(_css))
+{
+    <style>@_css</style>
+}
+
+@code {
+    private string? _css;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var url = new Uri(Http.BaseAddress!, "css/app.css?v=18");
+            _css = await Http.GetStringAsync(url);
+        }
+        catch
+        {
+            _css = FallbackCss;
+        }
+    }
+
+    private const string FallbackCss =
+        ":root{--tgtodo-primary:#5B7FFF;--tgtodo-bg:#F3F4F8;--tgtodo-surface:#fff;--tgtodo-text:#1e293b;--tgtodo-text-muted:#94a3b8}" +
+        "html,body,#app,.app-shell,.app-main{margin:0;background:var(--tgtodo-bg)!important;color:var(--tgtodo-text)}" +
+        ".floating-nav-wrap{position:fixed;left:0;right:0;bottom:22px;display:flex;justify-content:center;z-index:2000}" +
+        ".floating-nav-pill{display:inline-flex;background:var(--tgtodo-surface);border-radius:9999px;padding:8px 20px}" +
+        ".week-calendar-strip,.filter-chips{display:flex;flex-wrap:nowrap;overflow-x:auto}" +
+        ".cal-day{display:flex;flex-direction:column;min-width:44px;border:none;border-radius:14px;background:var(--tgtodo-surface);color:var(--tgtodo-text-muted)}" +
+        ".cal-day--selected{background:var(--tgtodo-primary);color:#fff}.filter-tab{border:none;border-radius:999px;padding:8px 14px;background:var(--tgtodo-surface);color:var(--tgtodo-text-muted)}" +
+        ".filter-tab--active{background:var(--tgtodo-primary);color:#fff}";
+}

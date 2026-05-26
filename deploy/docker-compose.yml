@@ -1,0 +1,145 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tgtodo
+      POSTGRES_PASSWORD: tgtodo
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tgtodo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: tgtodo
+      RABBITMQ_DEFAULT_PASS: tgtodo
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  identity:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+      args:
+        PROJECT_PATH: src/Services/Identity/TgTodo.Identity.Api/TgTodo.Identity.Api.csproj
+        ENTRY_DLL: TgTodo.Identity.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Identity: Host=postgres;Port=5432;Database=identity_db;Username=tgtodo;Password=tgtodo
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5001:8080"
+
+  groups:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+      args:
+        PROJECT_PATH: src/Services/Groups/TgTodo.Groups.Api/TgTodo.Groups.Api.csproj
+        ENTRY_DLL: TgTodo.Groups.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Groups: Host=postgres;Port=5432;Database=groups_db;Username=tgtodo;Password=tgtodo
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5002:8080"
+
+  tasks:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+      args:
+        PROJECT_PATH: src/Services/Tasks/TgTodo.Tasks.Api/TgTodo.Tasks.Api.csproj
+        ENTRY_DLL: TgTodo.Tasks.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Tasks: Host=postgres;Port=5432;Database=tasks_db;Username=tgtodo;Password=tgtodo
+      Services__Groups: http://groups:8080
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Username: tgtodo
+      RabbitMQ__Password: tgtodo
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      groups:
+        condition: service_started
+    ports:
+      - "5003:8080"
+
+  gamification:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+      args:
+        PROJECT_PATH: src/Services/Gamification/TgTodo.Gamification.Api/TgTodo.Gamification.Api.csproj
+        ENTRY_DLL: TgTodo.Gamification.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Gamification: Host=postgres;Port=5432;Database=gamification_db;Username=tgtodo;Password=tgtodo
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Username: tgtodo
+      RabbitMQ__Password: tgtodo
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "5004:8080"
+
+  bff:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.bff
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      Bot__InternalKey: ${BOT_INTERNAL_KEY:-dev-bot-key}
+      Services__Identity: http://identity:8080
+      Services__Groups: http://groups:8080
+      Services__Tasks: http://tasks:8080
+      Services__Gamification: http://gamification:8080
+    depends_on:
+      - identity
+      - groups
+      - tasks
+      - gamification
+    ports:
+      - "5000:8080"
+
+  bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.bot
+    environment:
+      Bot__Token: ${BOT_TOKEN:-}
+      Bot__BffBaseUrl: http://bff:8080
+      Bot__MiniAppUrl: ${MINI_APP_URL:-http://localhost:5000/}
+      Bot__InternalKey: ${BOT_INTERNAL_KEY:-dev-bot-key}
+    depends_on:
+      bff:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

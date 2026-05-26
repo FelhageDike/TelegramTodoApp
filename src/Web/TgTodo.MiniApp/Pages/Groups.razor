@@ -1,0 +1,215 @@
+@page "/groups"
+@inject BffApiClient Api
+@inject AppState AppState
+@inject ToastService Toast
+@inject IDialogService DialogService
+
+<MudText Typo="Typo.h6" Class="page-title">Группы</MudText>
+
+<MudTextField @bind-Value="_newGroupName" Label="Название семьи" Class="mb-2" />
+<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateGroupAsync" Class="mb-4" FullWidth="true">
+    Создать группу
+</MudButton>
+
+<MudDivider Class="my-3" />
+<MudText Typo="Typo.subtitle1">Вступить по коду</MudText>
+<MudTextField @bind-Value="_inviteCode" Label="Код приглашения (6 символов)" Class="mb-2"
+              HelperText="Латиница и цифры, без пробелов" />
+<MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="JoinAsync" FullWidth="true">
+    Вступить
+</MudButton>
+
+<MudDivider Class="my-4" />
+
+@if (_groups is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_groups.Count == 0)
+{
+    <MudText>Вы пока не в группах</MudText>
+}
+else
+{
+    @foreach (var g in _groups)
+    {
+        <MudCard Class="mb-2">
+            <MudCardContent>
+                <div class="d-flex justify-space-between align-center">
+                    <div style="flex:1" @onclick="() => SelectGroup(g)">
+                        <MudText Typo="Typo.subtitle1">@g.Name</MudText>
+                        <MudText Typo="Typo.caption">Код: @g.InviteCode · @FormatRole(g.MyRole)</MudText>
+                    </div>
+                    <MudIconButton Icon="@Icons.Material.Filled.People"
+                                   title="Участники"
+                                   OnClick="@(() => ShowMembersAsync(g))" />
+                    @if (g.MyRole == GroupRole.Owner)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                       title="Удалить группу"
+                                       Color="Color.Error"
+                                       OnClick="@(() => DeleteGroupAsync(g))" />
+                    }
+                    else
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.ExitToApp"
+                                       title="Выйти из группы"
+                                       OnClick="@(() => LeaveGroupAsync(g))" />
+                    }
+                </div>
+            </MudCardContent>
+        </MudCard>
+    }
+}
+
+@if (_expandedGroupId.HasValue)
+{
+    <MudPaper Class="pa-3 mt-3" Elevation="2">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Участники: @_expandedGroupName</MudText>
+        @if (_membersLoading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (_members is null || _members.Count == 0)
+        {
+            <MudText>Нет участников</MudText>
+        }
+        else
+        {
+            <MudList T="string" Dense="true">
+                @foreach (var m in _members)
+                {
+                    <MudListItem T="string">
+                        <MudText>@m.DisplayName</MudText>
+                        <MudText Typo="Typo.caption">@FormatRole(m.Role)</MudText>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+    </MudPaper>
+}
+
+@code {
+    private List<GroupDto>? _groups;
+    private string _newGroupName = string.Empty;
+    private string _inviteCode = string.Empty;
+    private Guid? _expandedGroupId;
+    private string? _expandedGroupName;
+    private List<GroupMemberViewDto>? _members;
+    private bool _membersLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AppState.InitializeAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _groups = await Api.GetGroupsAsync();
+
+    private async Task CreateGroupAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newGroupName))
+        {
+            Toast.Show("Введите название группы", ToastType.Warning);
+            return;
+        }
+        var (g, error) = await Api.CreateGroupAsync(_newGroupName.Trim());
+        if (g is null)
+        {
+            Toast.Show(error ?? "Ошибка", ToastType.Error);
+            return;
+        }
+        Toast.Show($"Группа создана. Код: {g.InviteCode}", ToastType.Success);
+        _newGroupName = string.Empty;
+        await LoadAsync();
+    }
+
+    private async Task LeaveGroupAsync(GroupDto g)
+    {
+        var (ok, error) = await Api.LeaveGroupAsync(g.Id);
+        if (!ok)
+        {
+            Toast.Show(error ?? "Не удалось выйти", ToastType.Error);
+            return;
+        }
+        if (AppState.SelectedGroupId == g.Id)
+            await AppState.SelectGroupAsync(null, null);
+        if (_expandedGroupId == g.Id)
+        {
+            _expandedGroupId = null;
+            _members = null;
+        }
+        Toast.Show($"Вы вышли из группы «{g.Name}»", ToastType.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteGroupAsync(GroupDto g)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Удалить группу?",
+            $"Группа «{g.Name}» и все её участники будут удалены безвозвратно.",
+            yesText: "Удалить",
+            cancelText: "Отмена");
+        if (confirm != true)
+            return;
+
+        var (ok, error) = await Api.DeleteGroupAsync(g.Id);
+        if (!ok)
+        {
+            Toast.Show(error ?? "Не удалось удалить", ToastType.Error);
+            return;
+        }
+        if (AppState.SelectedGroupId == g.Id)
+            await AppState.SelectGroupAsync(null, null);
+        if (_expandedGroupId == g.Id)
+        {
+            _expandedGroupId = null;
+            _members = null;
+        }
+        Toast.Show($"Группа «{g.Name}» удалена", ToastType.Success);
+        await LoadAsync();
+    }
+
+    private async Task JoinAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_inviteCode)) return;
+        var code = new string(_inviteCode.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        if (code.Length != 6)
+        {
+            Toast.Show("Код должен быть 6 символов (латиница и цифры)", ToastType.Warning);
+            return;
+        }
+
+        var (g, error) = await Api.JoinGroupAsync(code);
+        if (g is null)
+        {
+            Toast.Show(error ?? "Не удалось вступить", ToastType.Error);
+            return;
+        }
+        Toast.Show($"Вы в группе {g.Name}", ToastType.Success);
+        _inviteCode = string.Empty;
+        await LoadAsync();
+    }
+
+    private async Task SelectGroup(GroupDto g)
+    {
+        await AppState.SelectGroupAsync(g.Id, g.Name);
+        Toast.Show($"Выбрана группа: {g.Name}", ToastType.Info);
+    }
+
+    private async Task ShowMembersAsync(GroupDto g)
+    {
+        _expandedGroupId = g.Id;
+        _expandedGroupName = g.Name;
+        _membersLoading = true;
+        _members = await Api.GetGroupMembersAsync(g.Id);
+        _membersLoading = false;
+    }
+
+    private static string FormatRole(GroupRole role) => role switch
+    {
+        GroupRole.Owner => "Владелец",
+        GroupRole.Admin => "Админ",
+        _ => "Участник"
+    };
+}

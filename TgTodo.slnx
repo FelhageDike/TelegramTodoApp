@@ -1,0 +1,38 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Gateway/">
+    <Project Path="src/Gateway/TgTodo.Bff/TgTodo.Bff.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/" />
+  <Folder Name="/src/Services/Gamification/">
+    <Project Path="src/Services/Gamification/TgTodo.Gamification.Api/TgTodo.Gamification.Api.csproj" />
+    <Project Path="src/Services/Gamification/TgTodo.Gamification.Application/TgTodo.Gamification.Application.csproj" />
+    <Project Path="src/Services/Gamification/TgTodo.Gamification.Domain/TgTodo.Gamification.Domain.csproj" />
+    <Project Path="src/Services/Gamification/TgTodo.Gamification.Infrastructure/TgTodo.Gamification.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Groups/">
+    <Project Path="src/Services/Groups/TgTodo.Groups.Api/TgTodo.Groups.Api.csproj" />
+    <Project Path="src/Services/Groups/TgTodo.Groups.Application/TgTodo.Groups.Application.csproj" />
+    <Project Path="src/Services/Groups/TgTodo.Groups.Domain/TgTodo.Groups.Domain.csproj" />
+    <Project Path="src/Services/Groups/TgTodo.Groups.Infrastructure/TgTodo.Groups.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Identity/">
+    <Project Path="src/Services/Identity/TgTodo.Identity.Api/TgTodo.Identity.Api.csproj" />
+    <Project Path="src/Services/Identity/TgTodo.Identity.Application/TgTodo.Identity.Application.csproj" />
+    <Project Path="src/Services/Identity/TgTodo.Identity.Domain/TgTodo.Identity.Domain.csproj" />
+    <Project Path="src/Services/Identity/TgTodo.Identity.Infrastructure/TgTodo.Identity.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/Tasks/">
+    <Project Path="src/Services/Tasks/TgTodo.Tasks.Api/TgTodo.Tasks.Api.csproj" />
+    <Project Path="src/Services/Tasks/TgTodo.Tasks.Application/TgTodo.Tasks.Application.csproj" />
+    <Project Path="src/Services/Tasks/TgTodo.Tasks.Domain/TgTodo.Tasks.Domain.csproj" />
+    <Project Path="src/Services/Tasks/TgTodo.Tasks.Infrastructure/TgTodo.Tasks.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/TgTodo.BuildingBlocks/TgTodo.BuildingBlocks.csproj" />
+    <Project Path="src/Shared/TgTodo.Contracts/TgTodo.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Web/">
+    <Project Path="src/Web/TgTodo.MiniApp/TgTodo.MiniApp.csproj" />
+  </Folder>
+</Solution>
