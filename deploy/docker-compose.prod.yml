@@ -1,0 +1,60 @@
+# Production: docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d --build
+
+services:
+  postgres:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+  rabbitmq:
+    ports: !reset []
+    environment:
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+
+  identity:
+    ports: !reset []
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Identity: Host=postgres;Port=5432;Database=identity_db;Username=tgtodo;Password=${POSTGRES_PASSWORD}
+
+  groups:
+    ports: !reset []
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Groups: Host=postgres;Port=5432;Database=groups_db;Username=tgtodo;Password=${POSTGRES_PASSWORD}
+
+  tasks:
+    ports: !reset []
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Tasks: Host=postgres;Port=5432;Database=tasks_db;Username=tgtodo;Password=${POSTGRES_PASSWORD}
+
+  gamification:
+    ports: !reset []
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Gamification: Host=postgres;Port=5432;Database=gamification_db;Username=tgtodo;Password=${POSTGRES_PASSWORD}
+
+  bff:
+    ports: !reset []
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - bff
+
+volumes:
+  caddy_data:
+  caddy_config:

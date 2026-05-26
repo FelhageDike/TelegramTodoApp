@@ -1,0 +1,5 @@
+# Замените на ваш DuckDNS, например tgtodo.duckdns.org
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy bff:8080
+}
