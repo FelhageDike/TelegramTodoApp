@@ -2,6 +2,7 @@ using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using TgTodo.AspNetCore.Auth;
 using TgTodo.Tasks.Application.Abstractions;
 using TgTodo.Tasks.Infrastructure.Clients;
 using TgTodo.Tasks.Infrastructure.Outbox;
@@ -19,7 +20,9 @@ public static class DependencyInjection
                 npgsql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(3), null)));
 
         services.AddScoped<ITaskRepository, TaskRepository>();
-        services.AddHttpClient<IGroupsClient, GroupsHttpClient>();
+        services.AddTgTodoServiceAuth(configuration);
+        services.AddHttpClient<IGroupsClient, GroupsHttpClient>()
+            .AddTgTodoServiceAuth();
 
         services.AddMassTransit(x =>
         {

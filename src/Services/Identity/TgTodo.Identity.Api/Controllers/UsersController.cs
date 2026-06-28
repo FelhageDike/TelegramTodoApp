@@ -33,7 +33,7 @@ public class UsersController : ControllerBase
 
 public record UpdateTimezoneRequest(string Timezone);
 
-[AllowAnonymous]
+[Authorize(Policy = TgTodoAuthDefaults.InternalPolicy)]
 [ApiController]
 [Route("internal/users")]
 public class InternalUsersController : ControllerBase

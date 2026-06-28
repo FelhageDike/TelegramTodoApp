@@ -40,6 +40,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Identity: Host=postgres;Port=5432;Database=identity_db;Username=tgtodo;Password=tgtodo
+      ServiceAuth__InternalKey: ${SERVICE_INTERNAL_KEY:-dev-service-key}
+      ServiceAuth__UserIdSigningKey: ${SERVICE_USER_ID_SIGNING_KEY:-dev-user-id-signing-key}
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +58,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Groups: Host=postgres;Port=5432;Database=groups_db;Username=tgtodo;Password=tgtodo
+      ServiceAuth__InternalKey: ${SERVICE_INTERNAL_KEY:-dev-service-key}
+      ServiceAuth__UserIdSigningKey: ${SERVICE_USER_ID_SIGNING_KEY:-dev-user-id-signing-key}
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,6 +80,8 @@ services:
       RabbitMQ__Host: rabbitmq
       RabbitMQ__Username: tgtodo
       RabbitMQ__Password: tgtodo
+      ServiceAuth__InternalKey: ${SERVICE_INTERNAL_KEY:-dev-service-key}
+      ServiceAuth__UserIdSigningKey: ${SERVICE_USER_ID_SIGNING_KEY:-dev-user-id-signing-key}
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,6 +105,8 @@ services:
       RabbitMQ__Host: rabbitmq
       RabbitMQ__Username: tgtodo
       RabbitMQ__Password: tgtodo
+      ServiceAuth__InternalKey: ${SERVICE_INTERNAL_KEY:-dev-service-key}
+      ServiceAuth__UserIdSigningKey: ${SERVICE_USER_ID_SIGNING_KEY:-dev-user-id-signing-key}
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,6 +123,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       BOT_TOKEN: ${BOT_TOKEN:-}
       Bot__InternalKey: ${BOT_INTERNAL_KEY:-dev-bot-key}
+      ServiceAuth__InternalKey: ${SERVICE_INTERNAL_KEY:-dev-service-key}
+      ServiceAuth__UserIdSigningKey: ${SERVICE_USER_ID_SIGNING_KEY:-dev-user-id-signing-key}
       Services__Identity: http://identity:8080
       Services__Groups: http://groups:8080
       Services__Tasks: http://tasks:8080

@@ -8,12 +8,16 @@ namespace TgTodo.AspNetCore.Auth;
 
 public sealed class UserIdHeaderAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
+    private readonly ServiceAuthOptions _authOptions;
+
     public UserIdHeaderAuthenticationHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder)
+        UrlEncoder encoder,
+        IOptionsMonitor<ServiceAuthOptions> authOptions)
         : base(options, logger, encoder)
     {
+        _authOptions = authOptions.CurrentValue;
     }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -24,10 +28,22 @@ public sealed class UserIdHeaderAuthenticationHandler : AuthenticationHandler<Au
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        var claims = new[] { new Claim(TgTodoAuthDefaults.UserIdClaimType, userId.ToString()) };
-        var identity = new ClaimsIdentity(claims, TgTodoAuthDefaults.SchemeName);
+        var userIdValue = userId.ToString();
+        var signingKey = _authOptions.UserIdSigningKey;
+
+        if (!string.IsNullOrEmpty(signingKey))
+        {
+            if (!Request.Headers.TryGetValue(TgTodoAuthDefaults.UserIdSignatureHeaderName, out var signature) ||
+                !UserIdSignatureHelper.Verify(userIdValue, signature.ToString(), signingKey))
+            {
+                return Task.FromResult(AuthenticateResult.NoResult());
+            }
+        }
+
+        var claims = new[] { new Claim(TgTodoAuthDefaults.UserIdClaimType, userIdValue) };
+        var identity = new ClaimsIdentity(claims, TgTodoAuthDefaults.UserSchemeName);
         var principal = new ClaimsPrincipal(identity);
-        var ticket = new AuthenticationTicket(principal, TgTodoAuthDefaults.SchemeName);
+        var ticket = new AuthenticationTicket(principal, TgTodoAuthDefaults.UserSchemeName);
 
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
