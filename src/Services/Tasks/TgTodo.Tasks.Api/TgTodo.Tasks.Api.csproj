@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared\TgTodo.AspNetCore.Auth\TgTodo.AspNetCore.Auth.csproj" />
     <ProjectReference Include="..\TgTodo.Tasks.Infrastructure\TgTodo.Tasks.Infrastructure.csproj" />
     <ProjectReference Include="..\TgTodo.Tasks.Application\TgTodo.Tasks.Application.csproj" />
   </ItemGroup>

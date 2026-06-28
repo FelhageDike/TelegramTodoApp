@@ -1,4 +1,5 @@
 using Serilog;
+using TgTodo.AspNetCore.Auth;
 using TgTodo.Identity.Api.Middleware;
 using TgTodo.Identity.Application;
 using TgTodo.Identity.Infrastructure;
@@ -11,6 +12,7 @@ builder.Host.UseSerilog((ctx, cfg) =>
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddTgTodoUserAuthentication();
 builder.Services.AddIdentityApplication();
 builder.Services.AddIdentityInfrastructure(builder.Configuration);
 
@@ -25,6 +27,7 @@ if (app.Environment.IsDevelopment())
 await app.Services.MigrateIdentityDatabaseAsync();
 
 app.UseMiddleware<ExceptionMiddleware>();
+app.UseTgTodoUserAuthentication();
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "identity" }));
 

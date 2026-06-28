@@ -1,4 +1,5 @@
 using Serilog;
+using TgTodo.AspNetCore.Auth;
 using TgTodo.Groups.Api.Middleware;
 using TgTodo.Groups.Application;
 using TgTodo.Groups.Infrastructure;
@@ -11,6 +12,7 @@ builder.Host.UseSerilog((ctx, cfg) =>
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddTgTodoUserAuthentication();
 builder.Services.AddGroupsApplication();
 builder.Services.AddGroupsInfrastructure(builder.Configuration);
 
@@ -25,6 +27,7 @@ if (app.Environment.IsDevelopment())
 await app.Services.MigrateGroupsDatabaseAsync();
 
 app.UseMiddleware<ExceptionMiddleware>();
+app.UseTgTodoUserAuthentication();
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "groups" }));
 

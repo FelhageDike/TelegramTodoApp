@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TgTodo.AspNetCore.Auth;
 using TgTodo.Contracts.Enums;
 using TgTodo.Tasks.Application.Categories;
 using TgTodo.Tasks.Application.Tasks;
@@ -14,16 +15,13 @@ public class TasksController : ControllerBase
 
     public TasksController(IMediator mediator) => _mediator = mediator;
 
-    private Guid? CurrentUserId =>
-        Guid.TryParse(Request.Headers["X-User-Id"], out var id) ? id : null;
-
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TaskDto>>> GetTasks(
         [FromQuery] Guid? groupId,
         [FromQuery] DateOnly? date,
         CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var tasks = await _mediator.Send(new GetTasksQuery(userId, groupId, date), ct);
         return Ok(tasks);
     }
@@ -35,7 +33,7 @@ public class TasksController : ControllerBase
         [FromQuery] int month,
         CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         if (year < 2000 || year > 2100)
             year = DateTime.UtcNow.Year;
         if (month is < 1 or > 12)
@@ -47,7 +45,7 @@ public class TasksController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<TaskDto>> Create([FromBody] CreateTaskRequest request, CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var task = await _mediator.Send(new CreateTaskCommand(
             userId,
             request.Scope,
@@ -73,7 +71,7 @@ public class TasksController : ControllerBase
         [FromQuery] DateOnly? date,
         CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var task = await _mediator.Send(new CompleteTaskCommand(userId, taskId, date), ct);
         return Ok(task);
     }
@@ -87,15 +85,12 @@ public class CategoriesController : ControllerBase
 
     public CategoriesController(IMediator mediator) => _mediator = mediator;
 
-    private Guid? CurrentUserId =>
-        Guid.TryParse(Request.Headers["X-User-Id"], out var id) ? id : null;
-
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<CategoryDto>>> Get(
         [FromQuery] Guid? groupId,
         CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var categories = await _mediator.Send(new GetCategoriesQuery(userId, groupId), ct);
         return Ok(categories);
     }
@@ -103,7 +98,7 @@ public class CategoriesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<CategoryDto>> Create([FromBody] CreateCategoryRequest request, CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var category = await _mediator.Send(
             new CreateCategoryCommand(userId, request.Name, request.Emoji, request.GroupId), ct);
         return Ok(category);

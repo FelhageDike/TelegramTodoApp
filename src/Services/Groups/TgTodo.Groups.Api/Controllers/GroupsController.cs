@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TgTodo.AspNetCore.Auth;
 using TgTodo.Groups.Application.Groups;
 
 namespace TgTodo.Groups.Api.Controllers;
@@ -12,13 +13,10 @@ public class GroupsController : ControllerBase
 
     public GroupsController(IMediator mediator) => _mediator = mediator;
 
-    private Guid? CurrentUserId =>
-        Guid.TryParse(Request.Headers["X-User-Id"], out var id) ? id : null;
-
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<GroupDto>>> GetGroups(CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var groups = await _mediator.Send(new GetGroupsQuery(userId), ct);
         return Ok(groups);
     }
@@ -26,7 +24,7 @@ public class GroupsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<GroupDto>> Create([FromBody] CreateGroupRequest request, CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var group = await _mediator.Send(new CreateGroupCommand(userId, request.Name), ct);
         return Ok(group);
     }
@@ -34,7 +32,7 @@ public class GroupsController : ControllerBase
     [HttpPost("join")]
     public async Task<ActionResult<GroupDto>> Join([FromBody] JoinGroupRequest request, CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var group = await _mediator.Send(new JoinGroupCommand(userId, request.InviteCode), ct);
         return Ok(group);
     }
@@ -42,7 +40,7 @@ public class GroupsController : ControllerBase
     [HttpGet("{groupId:guid}/members")]
     public async Task<ActionResult<IReadOnlyList<GroupMemberDto>>> GetMembers(Guid groupId, CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var members = await _mediator.Send(new GetMembersQuery(userId, groupId), ct);
         return Ok(members);
     }
@@ -50,7 +48,7 @@ public class GroupsController : ControllerBase
     [HttpGet("{groupId:guid}/membership")]
     public async Task<ActionResult<bool>> CheckMembership(Guid groupId, CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         var isMember = await _mediator.Send(new CheckMembershipQuery(userId, groupId), ct);
         return Ok(isMember);
     }
@@ -58,7 +56,7 @@ public class GroupsController : ControllerBase
     [HttpPost("{groupId:guid}/leave")]
     public async Task<IActionResult> Leave(Guid groupId, CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         await _mediator.Send(new LeaveGroupCommand(userId, groupId), ct);
         return NoContent();
     }
@@ -66,7 +64,7 @@ public class GroupsController : ControllerBase
     [HttpDelete("{groupId:guid}")]
     public async Task<IActionResult> Delete(Guid groupId, CancellationToken ct)
     {
-        if (CurrentUserId is not { } userId) return Unauthorized();
+        var userId = User.GetUserId();
         await _mediator.Send(new DeleteGroupCommand(userId, groupId), ct);
         return NoContent();
     }
