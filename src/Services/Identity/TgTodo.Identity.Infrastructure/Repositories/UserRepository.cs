@@ -26,6 +26,9 @@ public class UserRepository : IUserRepository
     public Task<User?> GetByTelegramIdAsync(long telegramId, CancellationToken ct = default) =>
         _db.Users.FirstOrDefaultAsync(x => x.TelegramId == telegramId, ct);
 
+    public async Task<IReadOnlyList<User>> GetAllAsync(CancellationToken ct = default) =>
+        await _db.Users.OrderBy(u => u.DisplayName).ToListAsync(ct);
+
     public async Task AddAsync(User user, CancellationToken ct = default) =>
         await _db.Users.AddAsync(user, ct);
 

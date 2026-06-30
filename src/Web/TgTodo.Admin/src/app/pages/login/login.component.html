@@ -1,0 +1,76 @@
+<div class="login-page">
+  <div class="login-wrap">
+    <div class="login-brand">
+      <div class="brand-row">
+        <svg class="icon-primary" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6f6 8 10 8 10z"/>
+        </svg>
+        <span class="label-caps brand-tag">TGTODO / ADMIN</span>
+      </div>
+      <h1>Вход</h1>
+      <p class="subtitle">
+        @if (auth.oidcEnabled() && auth.secretKeyEnabled()) {
+          Войдите через SSO или секретный ключ.
+        } @else if (auth.oidcEnabled()) {
+          Войдите через корпоративный SSO.
+        } @else {
+          Введите секретный ключ для доступа к дашборду.
+        }
+      </p>
+    </div>
+
+    @if (auth.initError()) {
+      <p class="error">{{ auth.initError() }}</p>
+    }
+
+    @if (auth.oidcEnabled()) {
+      <button
+        type="button"
+        class="submit-btn sso-btn"
+        [disabled]="oidcLoading()"
+        (click)="loginWithSso()"
+      >
+        {{ oidcLoading() ? 'Перенаправление…' : 'Sign in with SSO' }}
+      </button>
+    }
+
+    @if (auth.oidcEnabled() && auth.secretKeyEnabled()) {
+      <div class="divider">
+        <span class="label-caps">или</span>
+      </div>
+    }
+
+    @if (auth.secretKeyEnabled()) {
+      <div [class.shake]="shaking()">
+        <label class="label-caps field-label" for="admin-key">Secret Key</label>
+        <div class="input-wrap">
+          <input
+            id="admin-key"
+            [type]="showKey() ? 'text' : 'password'"
+            [(ngModel)]="key"
+            name="key"
+            autocomplete="current-password"
+            placeholder="dev-admin-key"
+            class="mono"
+            (keydown.enter)="submit()"
+            autofocus
+          />
+          <button type="button" class="toggle-visibility" (click)="toggleShow()" [attr.aria-label]="showKey() ? 'Скрыть' : 'Показать'">
+            @if (showKey()) {
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            } @else {
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            }
+          </button>
+        </div>
+        @if (error()) {
+          <p class="error">{{ error() }}</p>
+        }
+      </div>
+
+      <button type="button" class="submit-btn secondary" [disabled]="loading() || !key.trim()" (click)="submit()">
+        {{ loading() ? 'Проверка…' : 'Authenticate with key' }}
+      </button>
+    }
+  </div>
+</div>

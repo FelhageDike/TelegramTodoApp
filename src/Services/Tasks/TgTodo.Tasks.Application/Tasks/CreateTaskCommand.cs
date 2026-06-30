@@ -27,26 +27,16 @@ public record CreateTaskCommand(
 public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, TaskDto>
 {
     private readonly ITaskRepository _tasks;
-    private readonly IGroupsClient _groups;
 
-    public CreateTaskCommandHandler(ITaskRepository tasks, IGroupsClient groups)
-    {
-        _tasks = tasks;
-        _groups = groups;
-    }
+    public CreateTaskCommandHandler(ITaskRepository tasks) => _tasks = tasks;
 
     public async Task<TaskDto> Handle(CreateTaskCommand request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Title))
             throw new ValidationException("Название задачи не может быть пустым.");
 
-        if (request.Scope == TaskScope.Group)
-        {
-            if (request.GroupId is null)
-                throw new ConflictException("GroupId is required for group tasks.");
-            if (!await _groups.IsMemberAsync(request.GroupId.Value, request.UserId, ct))
-                throw new ForbiddenException("Not a group member.");
-        }
+        if (request.Scope == TaskScope.Group && request.GroupId is null)
+            throw new ConflictException("GroupId is required for group tasks.");
 
         RecurrenceSchedule.Validate(request.Recurrence, request.Weekday, request.DayOfMonth, request.IntervalDays);
 

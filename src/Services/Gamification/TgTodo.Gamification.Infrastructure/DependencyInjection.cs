@@ -2,6 +2,7 @@ using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using TgTodo.AspNetCore.Auth;
 using TgTodo.Gamification.Application.Abstractions;
 using TgTodo.Gamification.Application.Consumers;
 using TgTodo.Gamification.Infrastructure.Persistence;
@@ -18,6 +19,9 @@ public static class DependencyInjection
                 npgsql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(3), null)));
 
         services.AddScoped<IGamificationRepository, GamificationRepository>();
+
+        services.AddTgTodoServiceAuth(configuration);
+        services.AddTgTodoRemoteGroupMembership(configuration);
 
         services.AddMassTransit(x =>
         {

@@ -29,6 +29,7 @@
     <Project Path="src/Services/Tasks/TgTodo.Tasks.Infrastructure/TgTodo.Tasks.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/TgTodo.AspNetCore.Auth/TgTodo.AspNetCore.Auth.csproj" />
     <Project Path="src/Shared/TgTodo.BuildingBlocks/TgTodo.BuildingBlocks.csproj" />
     <Project Path="src/Shared/TgTodo.Contracts/TgTodo.Contracts.csproj" />
   </Folder>

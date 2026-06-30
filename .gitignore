@@ -18,3 +18,6 @@ github_deploy_key.pub
 _pub_test/
 _pubtest/
 **/wwwroot/_framework/
+src/Gateway/TgTodo.Bff/wwwroot/admin/
+src/Web/TgTodo.Admin/node_modules/
+_design-ref/

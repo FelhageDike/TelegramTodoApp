@@ -1,15 +1,15 @@
+using TgTodo.BuildingBlocks.Abstractions;
 using TgTodo.BuildingBlocks.Exceptions;
 using TgTodo.Contracts.Enums;
-using TgTodo.Tasks.Application.Abstractions;
 using TgTodo.Tasks.Domain.Entities;
 
 namespace TgTodo.Tasks.Application.Services;
 
 public class TaskAccessService
 {
-    private readonly IGroupsClient _groups;
+    private readonly IGroupsMembershipClient _groups;
 
-    public TaskAccessService(IGroupsClient groups) => _groups = groups;
+    public TaskAccessService(IGroupsMembershipClient groups) => _groups = groups;
 
     public async Task EnsureCanViewAsync(TodoTask task, Guid userId, CancellationToken ct)
     {

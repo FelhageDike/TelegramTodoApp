@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TgTodo.Tasks.Application\TgTodo.Tasks.Application.csproj" />
     <ProjectReference Include="..\TgTodo.Tasks.Domain\TgTodo.Tasks.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\TgTodo.AspNetCore.Auth\TgTodo.AspNetCore.Auth.csproj" />
     <ProjectReference Include="..\..\..\Shared\TgTodo.Contracts\TgTodo.Contracts.csproj" />
   </ItemGroup>
 

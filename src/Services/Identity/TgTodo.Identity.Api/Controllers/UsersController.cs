@@ -1,5 +1,7 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TgTodo.AspNetCore.Auth;
 using TgTodo.Identity.Application.Users;
 
 namespace TgTodo.Identity.Api.Controllers;
@@ -15,9 +17,7 @@ public class UsersController : ControllerBase
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> GetMe(CancellationToken ct)
     {
-        if (!Guid.TryParse(Request.Headers["X-User-Id"], out var userId))
-            return Unauthorized();
-
+        var userId = User.GetUserId();
         var user = await _mediator.Send(new GetUserQuery(userId), ct);
         return Ok(user);
     }
@@ -25,9 +25,7 @@ public class UsersController : ControllerBase
     [HttpPatch("me/timezone")]
     public async Task<ActionResult<UserDto>> UpdateTimezone([FromBody] UpdateTimezoneRequest body, CancellationToken ct)
     {
-        if (!Guid.TryParse(Request.Headers["X-User-Id"], out var userId))
-            return Unauthorized();
-
+        var userId = User.GetUserId();
         var user = await _mediator.Send(new UpdateUserTimezoneCommand(userId, body.Timezone), ct);
         return Ok(user);
     }
@@ -35,6 +33,7 @@ public class UsersController : ControllerBase
 
 public record UpdateTimezoneRequest(string Timezone);
 
+[Authorize(Policy = TgTodoAuthDefaults.InternalPolicy)]
 [ApiController]
 [Route("internal/users")]
 public class InternalUsersController : ControllerBase
@@ -55,6 +54,13 @@ public class InternalUsersController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<UserDto>>> GetByIds([FromBody] GetUsersByIdsRequest request, CancellationToken ct)
     {
         var users = await _mediator.Send(new GetUsersByIdsQuery(request.UserIds), ct);
+        return Ok(users);
+    }
+
+    [HttpGet("all")]
+    public async Task<ActionResult<IReadOnlyList<UserDto>>> GetAll(CancellationToken ct)
+    {
+        var users = await _mediator.Send(new GetAllUsersQuery(), ct);
         return Ok(users);
     }
 }
