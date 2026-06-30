@@ -118,6 +118,24 @@ services:
     ports:
       - "5004:8080"
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8180
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/tgtodo-realm.json:/opt/keycloak/data/import/tgtodo-realm.json
+    ports:
+      - "8180:8080"
+
   bff:
     build:
       context: ..
@@ -132,11 +150,25 @@ services:
       Services__Groups: http://groups:8080
       Services__Tasks: http://tasks:8080
       Services__Gamification: http://gamification:8080
+      Admin__SecretKey: ${ADMIN_SECRET_KEY:-dev-admin-key}
+      Admin__Oidc__Authority: ${ADMIN_OIDC_AUTHORITY:-http://localhost:8180/realms/tgtodo}
+      Admin__Oidc__MetadataAddress: ${ADMIN_OIDC_METADATA_ADDRESS:-http://keycloak:8080/realms/tgtodo}
+      Admin__Oidc__Audience: ${ADMIN_OIDC_AUDIENCE:-}
+      Admin__Oidc__ClientId: ${ADMIN_OIDC_CLIENT_ID:-tgtodo-admin}
+      Admin__Oidc__Scope: ${ADMIN_OIDC_SCOPE:-openid profile email}
+      Admin__Oidc__RequiredRole: ${ADMIN_OIDC_REQUIRED_ROLE:-admin}
+      Admin__Oidc__RequireHttpsMetadata: "false"
     depends_on:
-      - identity
-      - groups
-      - tasks
-      - gamification
+      keycloak:
+        condition: service_started
+      identity:
+        condition: service_started
+      groups:
+        condition: service_started
+      tasks:
+        condition: service_started
+      gamification:
+        condition: service_started
     ports:
       - "5000:8080"
 

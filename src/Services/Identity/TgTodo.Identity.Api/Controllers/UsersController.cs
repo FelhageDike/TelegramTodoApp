@@ -56,6 +56,13 @@ public class InternalUsersController : ControllerBase
         var users = await _mediator.Send(new GetUsersByIdsQuery(request.UserIds), ct);
         return Ok(users);
     }
+
+    [HttpGet("all")]
+    public async Task<ActionResult<IReadOnlyList<UserDto>>> GetAll(CancellationToken ct)
+    {
+        var users = await _mediator.Send(new GetAllUsersQuery(), ct);
+        return Ok(users);
+    }
 }
 
 public record EnsureUserRequest(long TelegramId, string DisplayName, string Timezone);

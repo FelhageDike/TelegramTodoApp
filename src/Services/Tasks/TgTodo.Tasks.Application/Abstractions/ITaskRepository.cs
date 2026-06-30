@@ -15,4 +15,8 @@ public interface ITaskRepository
     Task<Category?> GetCategoryByIdAsync(Guid id, CancellationToken ct = default);
     Task AddCategoryAsync(Category category, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, int>> GetActiveTaskCountsByUserAsync(CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, int>> GetCompletedTaskCountsByUserAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<TodoTask>> GetTasksForUserAdminAsync(Guid userId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, int>> GetUserCompletionCountsByTaskAsync(Guid userId, CancellationToken ct = default);
 }

@@ -1,9 +1,19 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TgTodo.Contracts.Enums;
 
 namespace TgTodo.Bff.Clients;
+
+internal static class ServiceClientJson
+{
+    internal static readonly JsonSerializerOptions Options = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
+}
 
 public record IdentityUserDto(Guid Id, long TelegramId, string DisplayName, string Timezone);
 
@@ -48,6 +58,13 @@ public class IdentityApiClient
         var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<IdentityUserDto>())!;
+    }
+
+    public async Task<IReadOnlyList<IdentityUserDto>> GetAllUsersAsync()
+    {
+        var response = await _http.GetAsync("internal/users/all");
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<List<IdentityUserDto>>())!;
     }
 }
 
@@ -236,6 +253,20 @@ public class TasksApiClient
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<List<CategoryDto>>())!;
     }
+
+    public async Task<IReadOnlyList<AdminUserTaskStatsDto>> GetAdminTaskStatsAsync()
+    {
+        var response = await _http.GetAsync("internal/admin/task-stats");
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<List<AdminUserTaskStatsDto>>())!;
+    }
+
+    public async Task<IReadOnlyList<AdminTaskDto>> GetAdminUserTasksAsync(Guid userId)
+    {
+        var response = await _http.GetAsync($"internal/admin/users/{userId}/tasks");
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<List<AdminTaskDto>>(ServiceClientJson.Options))!;
+    }
 }
 
 public class GamificationApiClient
@@ -263,4 +294,23 @@ public class GamificationApiClient
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<List<LedgerEntryDto>>())!;
     }
+
+    public async Task<IReadOnlyList<PersonalBalanceDto>> GetAllPersonalBalancesAsync()
+    {
+        var response = await _http.GetAsync("internal/admin/balances");
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<List<PersonalBalanceDto>>())!;
+    }
 }
+
+public record PersonalBalanceDto(Guid UserId, int Balance);
+
+public record AdminUserTaskStatsDto(Guid UserId, int ActiveTasks, int CompletedTasks);
+
+public record AdminTaskDto(
+    Guid Id,
+    string Title,
+    TaskScope Scope,
+    TgTodo.Contracts.Enums.TaskStatus Status,
+    RecurrenceType Recurrence,
+    int UserCompletionCount);

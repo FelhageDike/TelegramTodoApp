@@ -23,6 +23,11 @@ public class GamificationRepository : IGamificationRepository
     public Task<Account?> GetGroupAccountAsync(Guid groupId, CancellationToken ct = default) =>
         _db.Accounts.FirstOrDefaultAsync(a => a.GroupId == groupId, ct);
 
+    public async Task<IReadOnlyList<Account>> GetAllPersonalAccountsAsync(CancellationToken ct = default) =>
+        await _db.Accounts
+            .Where(a => a.UserId != null)
+            .ToListAsync(ct);
+
     public async Task AddAccountAsync(Account account, CancellationToken ct = default) =>
         await _db.Accounts.AddAsync(account, ct);
 

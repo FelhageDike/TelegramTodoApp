@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Serilog;
 using TgTodo.AspNetCore.Auth;
 using TgTodo.Bff.Auth;
@@ -12,6 +13,11 @@ builder.Host.UseSerilog((ctx, cfg) =>
     cfg.ReadFrom.Configuration(ctx.Configuration).WriteTo.Console());
 
 builder.Services.AddTgTodoServiceAuth(builder.Configuration);
+builder.Services.AddAdminOidcAuth(builder.Configuration);
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 builder.Services.AddSingleton<TelegramInitDataValidator>();
 builder.Services.AddHttpClient<IdentityApiClient>((sp, client) =>
 {
@@ -36,6 +42,12 @@ builder.Services.AddHttpClient<GamificationApiClient>((sp, client) =>
 builder.Services.AddSingleton<BotInlineDraftStore>();
 
 var app = builder.Build();
+
+if (AdminOidcConfig.IsEnabled(builder.Configuration))
+{
+    app.UseAuthentication();
+    app.UseAuthorization();
+}
 
 app.UseBlazorFrameworkFiles();
 app.UseStaticFiles(new StaticFileOptions
@@ -73,6 +85,7 @@ app.MapPost("/bff/internal/bot/drafts/prune", (BotInlineDraftStore store) =>
     return Results.Ok();
 });
 app.MapBffEndpoints();
+app.MapAdminEndpoints();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "bff" }));
 app.MapFallback(async context =>
 {
@@ -83,7 +96,11 @@ app.MapFallback(async context =>
         return;
     }
 
-    var indexPath = Path.Combine(app.Environment.WebRootPath, "index.html");
+    var isAdmin = path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase);
+    var indexPath = Path.Combine(
+        app.Environment.WebRootPath,
+        isAdmin ? "admin" : "",
+        "index.html");
     context.Response.ContentType = "text/html";
     context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
     await context.Response.SendFileAsync(indexPath);

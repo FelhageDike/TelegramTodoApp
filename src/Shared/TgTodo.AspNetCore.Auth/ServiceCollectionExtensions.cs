@@ -71,7 +71,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddTgTodoGroupAuthorization(this IServiceCollection services)
     {
         services.AddHttpContextAccessor();
-        services.AddSingleton<IAuthorizationHandler, GroupMemberAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, GroupMemberAuthorizationHandler>();
 
         services.AddAuthorization(options =>
         {

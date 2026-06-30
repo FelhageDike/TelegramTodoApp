@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Serilog;
 using TgTodo.AspNetCore.Auth;
 using TgTodo.Tasks.Api.Middleware;
@@ -9,7 +10,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog((ctx, cfg) =>
     cfg.ReadFrom.Configuration(ctx.Configuration).WriteTo.Console());
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddTgTodoUserAuthentication(builder.Configuration);

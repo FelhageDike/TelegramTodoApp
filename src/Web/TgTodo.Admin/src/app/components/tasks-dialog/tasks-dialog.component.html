@@ -1,0 +1,58 @@
+<div class="overlay" (click)="onBackdropClick($event)">
+  <aside class="panel panel-slide-in" role="dialog" aria-modal="true">
+    <header class="panel-header">
+      <div>
+        <h2>{{ user().displayName }}</h2>
+        <p class="mono sub">tg:{{ user().telegramId }}</p>
+      </div>
+      <button type="button" class="close-btn" (click)="dismiss()" aria-label="Закрыть">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </header>
+
+    <div class="tabs">
+      <button
+        type="button"
+        class="tab label-caps"
+        [class.active]="tab() === 'active'"
+        (click)="setTab('active')"
+      >
+        active · {{ activeTasks().length }}
+      </button>
+      <button
+        type="button"
+        class="tab label-caps"
+        [class.active]="tab() === 'completed'"
+        (click)="setTab('completed')"
+      >
+        completed · {{ completedTasks().length }}
+      </button>
+    </div>
+
+    <div class="panel-body">
+      @if (loading()) {
+        <div class="state">Загрузка задач…</div>
+      } @else if (error()) {
+        <div class="state error">{{ error() }}</div>
+      } @else if (visibleTasks().length === 0) {
+        <div class="state">No {{ tab() }} tasks.</div>
+      } @else {
+        @for (task of visibleTasks(); track task.id) {
+          <article class="task-card">
+            <div class="task-head">
+              <p class="task-title">{{ task.title }}</p>
+              <span class="badge badge-scope mono">{{ scopeLabel(task.scope) }}</span>
+            </div>
+            <div class="task-meta mono">
+              <span class="badge" [class]="statusClass(task.status)">{{ statusLabel(task.status) }}</span>
+              <span class="badge badge-muted">{{ recurrenceLabel(task.recurrence) }}</span>
+              <span class="meta-text">выполнений {{ task.userCompletionCount }}</span>
+            </div>
+          </article>
+        }
+      }
+    </div>
+  </aside>
+</div>

@@ -138,6 +138,7 @@ public class TelegramAuthMiddleware
 
     private static bool IsPublicPath(PathString path) =>
         path.StartsWithSegments("/health") ||
+        path.StartsWithSegments("/admin") ||
         path.StartsWithSegments("/_framework") ||
         path.StartsWithSegments("/_content") ||
         path.StartsWithSegments("/css") ||

@@ -66,6 +66,50 @@ public class TaskRepository : ITaskRepository
     public async Task AddCategoryAsync(Category category, CancellationToken ct = default) =>
         await _db.Categories.AddAsync(category, ct);
 
+    public async Task<IReadOnlyDictionary<Guid, int>> GetActiveTaskCountsByUserAsync(CancellationToken ct = default)
+    {
+        var pendingTasks = await _db.Tasks
+            .Where(t => t.Status == Contracts.Enums.TaskStatus.Pending)
+            .Select(t => new { t.OwnerUserId, t.CreatedByUserId, t.AssignedToUserId })
+            .ToListAsync(ct);
+
+        var counts = new Dictionary<Guid, int>();
+        foreach (var task in pendingTasks)
+        {
+            var userIds = new HashSet<Guid> { task.OwnerUserId, task.CreatedByUserId };
+            if (task.AssignedToUserId.HasValue)
+                userIds.Add(task.AssignedToUserId.Value);
+
+            foreach (var userId in userIds)
+                counts[userId] = counts.GetValueOrDefault(userId) + 1;
+        }
+
+        return counts;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int>> GetCompletedTaskCountsByUserAsync(CancellationToken ct = default) =>
+        await _db.TaskCompletions
+            .GroupBy(c => c.UserId)
+            .Select(g => new { UserId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.UserId, x => x.Count, ct);
+
+    public async Task<IReadOnlyList<TodoTask>> GetTasksForUserAdminAsync(Guid userId, CancellationToken ct = default) =>
+        await _db.Tasks
+            .Where(t =>
+                t.OwnerUserId == userId ||
+                t.CreatedByUserId == userId ||
+                t.AssignedToUserId == userId)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyDictionary<Guid, int>> GetUserCompletionCountsByTaskAsync(
+        Guid userId,
+        CancellationToken ct = default) =>
+        await _db.TaskCompletions
+            .Where(c => c.UserId == userId)
+            .GroupBy(c => c.TaskId)
+            .Select(g => new { TaskId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.TaskId, x => x.Count, ct);
+
     public Task SaveChangesAsync(CancellationToken ct = default) =>
         _db.SaveChangesAsync(ct);
 }
