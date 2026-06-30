@@ -3,10 +3,12 @@
   <ItemGroup>
     <ProjectReference Include="..\TgTodo.Gamification.Application\TgTodo.Gamification.Application.csproj" />
     <ProjectReference Include="..\TgTodo.Gamification.Domain\TgTodo.Gamification.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\TgTodo.AspNetCore.Auth\TgTodo.AspNetCore.Auth.csproj" />
     <ProjectReference Include="..\..\..\Shared\TgTodo.Contracts\TgTodo.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.3.3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">

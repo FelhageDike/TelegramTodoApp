@@ -1,5 +1,6 @@
 using Serilog;
 using TgTodo.AspNetCore.Auth;
+using TgTodo.Groups.Api.Auth;
 using TgTodo.Groups.Api.Middleware;
 using TgTodo.Groups.Application;
 using TgTodo.Groups.Infrastructure;
@@ -13,6 +14,8 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddTgTodoUserAuthentication(builder.Configuration);
+builder.Services.AddScoped<IGroupMembershipChecker, GroupRepositoryMembershipChecker>();
+builder.Services.AddTgTodoGroupAuthorization();
 builder.Services.AddGroupsApplication();
 builder.Services.AddGroupsInfrastructure(builder.Configuration);
 

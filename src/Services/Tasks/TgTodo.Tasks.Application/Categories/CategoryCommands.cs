@@ -12,13 +12,8 @@ public record GetCategoriesQuery(Guid UserId, Guid? GroupId) : IRequest<IReadOnl
 public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryCommand, CategoryDto>
 {
     private readonly ITaskRepository _tasks;
-    private readonly IGroupsClient _groups;
 
-    public CreateCategoryCommandHandler(ITaskRepository tasks, IGroupsClient groups)
-    {
-        _tasks = tasks;
-        _groups = groups;
-    }
+    public CreateCategoryCommandHandler(ITaskRepository tasks) => _tasks = tasks;
 
     public async Task<CategoryDto> Handle(CreateCategoryCommand request, CancellationToken ct)
     {
@@ -27,15 +22,9 @@ public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryComman
 
         Category category;
         if (request.GroupId.HasValue)
-        {
-            if (!await _groups.IsMemberAsync(request.GroupId.Value, request.UserId, ct))
-                throw new ForbiddenException("Not a group member.");
             category = Category.CreateGroup(request.GroupId.Value, request.Name.Trim(), request.Emoji);
-        }
         else
-        {
             category = Category.CreatePersonal(request.UserId, request.Name.Trim(), request.Emoji);
-        }
 
         await _tasks.AddCategoryAsync(category, ct);
         await _tasks.SaveChangesAsync(ct);

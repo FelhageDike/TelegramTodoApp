@@ -25,7 +25,17 @@ public sealed class UserIdHeaderAuthenticationHandler : AuthenticationHandler<Au
         if (!Request.Headers.TryGetValue(TgTodoAuthDefaults.UserIdHeaderName, out var header) ||
             !Guid.TryParse(header, out var userId))
         {
-            return Task.FromResult(AuthenticateResult.NoResult());
+            return Task.FromResult(AuthenticateResult.Fail("Missing or invalid X-User-Id header."));
+        }
+
+        if (_authOptions.RequireServiceKeyForUserApi &&
+            !string.IsNullOrEmpty(_authOptions.InternalKey))
+        {
+            if (!Request.Headers.TryGetValue(TgTodoAuthDefaults.ServiceKeyHeaderName, out var serviceKey) ||
+                serviceKey != _authOptions.InternalKey)
+            {
+                return Task.FromResult(AuthenticateResult.Fail("Invalid or missing X-TgTodo-Service-Key header."));
+            }
         }
 
         var userIdValue = userId.ToString();
@@ -36,7 +46,7 @@ public sealed class UserIdHeaderAuthenticationHandler : AuthenticationHandler<Au
             if (!Request.Headers.TryGetValue(TgTodoAuthDefaults.UserIdSignatureHeaderName, out var signature) ||
                 !UserIdSignatureHelper.Verify(userIdValue, signature.ToString(), signingKey))
             {
-                return Task.FromResult(AuthenticateResult.NoResult());
+                return Task.FromResult(AuthenticateResult.Fail("Invalid or missing X-User-Id-Signature header."));
             }
         }
 

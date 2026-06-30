@@ -29,7 +29,7 @@ public sealed class InternalServiceAuthenticationHandler : AuthenticationHandler
         if (!Request.Headers.TryGetValue(TgTodoAuthDefaults.ServiceKeyHeaderName, out var header) ||
             header != expectedKey)
         {
-            return Task.FromResult(AuthenticateResult.NoResult());
+            return Task.FromResult(AuthenticateResult.Fail("Invalid or missing X-TgTodo-Service-Key header."));
         }
 
         var claims = new[] { new Claim("tgtodo:service", "internal") };

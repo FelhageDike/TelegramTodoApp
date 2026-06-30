@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TgTodo.AspNetCore.Auth;
 using TgTodo.Gamification.Application.Balance;
@@ -13,6 +14,7 @@ public class BalanceController : ControllerBase
 
     public BalanceController(IMediator mediator) => _mediator = mediator;
 
+    [Authorize(Policy = TgTodoAuthDefaults.GroupMemberOptionalPolicy)]
     [HttpGet("balance")]
     public async Task<ActionResult<BalanceDto>> GetBalance([FromQuery] Guid? groupId, CancellationToken ct)
     {
@@ -21,6 +23,7 @@ public class BalanceController : ControllerBase
         return Ok(balance);
     }
 
+    [Authorize(Policy = TgTodoAuthDefaults.GroupMemberOptionalPolicy)]
     [HttpGet("ledger")]
     public async Task<ActionResult<IReadOnlyList<LedgerEntryDto>>> GetLedger(
         [FromQuery] Guid? groupId,

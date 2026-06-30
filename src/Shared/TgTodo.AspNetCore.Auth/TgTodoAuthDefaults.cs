@@ -6,6 +6,8 @@ public static class TgTodoAuthDefaults
     public const string InternalSchemeName = "TgTodoInternal";
 
     public const string InternalPolicy = "TgTodoInternal";
+    public const string GroupMemberPolicy = "TgTodoGroupMember";
+    public const string GroupMemberOptionalPolicy = "TgTodoGroupMemberOptional";
 
     public const string UserIdHeaderName = "X-User-Id";
     public const string UserIdSignatureHeaderName = "X-User-Id-Signature";

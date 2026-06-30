@@ -14,9 +14,6 @@ public class GetMembersQueryHandler : IRequestHandler<GetMembersQuery, IReadOnly
 
     public async Task<IReadOnlyList<GroupMemberDto>> Handle(GetMembersQuery request, CancellationToken ct)
     {
-        if (!await _groups.IsMemberAsync(request.GroupId, request.UserId, ct))
-            throw new ForbiddenException("Not a group member.");
-
         var group = await _groups.GetByIdAsync(request.GroupId, ct)
             ?? throw new NotFoundException("Group not found.");
 

@@ -13,6 +13,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddTgTodoUserAuthentication(builder.Configuration);
+builder.Services.AddTgTodoGroupAuthorization();
 builder.Services.AddGamificationApplication();
 builder.Services.AddGamificationInfrastructure(builder.Configuration);
 

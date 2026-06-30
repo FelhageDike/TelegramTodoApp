@@ -105,6 +105,7 @@ services:
       RabbitMQ__Host: rabbitmq
       RabbitMQ__Username: tgtodo
       RabbitMQ__Password: tgtodo
+      Services__Groups: http://groups:8080
       ServiceAuth__InternalKey: ${SERVICE_INTERNAL_KEY:-dev-service-key}
       ServiceAuth__UserIdSigningKey: ${SERVICE_USER_ID_SIGNING_KEY:-dev-user-id-signing-key}
     depends_on:
@@ -112,6 +113,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      groups:
+        condition: service_started
     ports:
       - "5004:8080"
 

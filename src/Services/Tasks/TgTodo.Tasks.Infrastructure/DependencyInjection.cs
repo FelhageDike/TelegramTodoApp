@@ -4,7 +4,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TgTodo.AspNetCore.Auth;
 using TgTodo.Tasks.Application.Abstractions;
-using TgTodo.Tasks.Infrastructure.Clients;
 using TgTodo.Tasks.Infrastructure.Outbox;
 using TgTodo.Tasks.Infrastructure.Persistence;
 using TgTodo.Tasks.Infrastructure.Repositories;
@@ -21,8 +20,7 @@ public static class DependencyInjection
 
         services.AddScoped<ITaskRepository, TaskRepository>();
         services.AddTgTodoServiceAuth(configuration);
-        services.AddHttpClient<IGroupsClient, GroupsHttpClient>()
-            .AddTgTodoServiceAuth();
+        services.AddTgTodoRemoteGroupMembership(configuration);
 
         services.AddMassTransit(x =>
         {

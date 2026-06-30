@@ -9,4 +9,7 @@ public class ServiceAuthOptions
 
     /// <summary>HMAC secret for signing X-User-Id on outbound calls from trusted services.</summary>
     public string? UserIdSigningKey { get; set; }
+
+    /// <summary>When true and <see cref="InternalKey"/> is set, user API requires X-TgTodo-Service-Key.</summary>
+    public bool RequireServiceKeyForUserApi { get; set; } = true;
 }

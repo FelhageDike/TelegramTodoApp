@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TgTodo.AspNetCore.Auth;
 using TgTodo.Groups.Application.Groups;
@@ -37,6 +38,7 @@ public class GroupsController : ControllerBase
         return Ok(group);
     }
 
+    [Authorize(Policy = TgTodoAuthDefaults.GroupMemberPolicy)]
     [HttpGet("{groupId:guid}/members")]
     public async Task<ActionResult<IReadOnlyList<GroupMemberDto>>> GetMembers(Guid groupId, CancellationToken ct)
     {
@@ -53,6 +55,7 @@ public class GroupsController : ControllerBase
         return Ok(isMember);
     }
 
+    [Authorize(Policy = TgTodoAuthDefaults.GroupMemberPolicy)]
     [HttpPost("{groupId:guid}/leave")]
     public async Task<IActionResult> Leave(Guid groupId, CancellationToken ct)
     {
@@ -61,6 +64,7 @@ public class GroupsController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Policy = TgTodoAuthDefaults.GroupMemberPolicy)]
     [HttpDelete("{groupId:guid}")]
     public async Task<IActionResult> Delete(Guid groupId, CancellationToken ct)
     {
